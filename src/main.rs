@@ -227,15 +227,25 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
 
     // We checked for all operations outside of brackets, so if the token stream starts with a plus
     // or minus, it has to be unary.
-    match (&tokens[0], &tokens[1]) {
-        (Token::Plus, t) if !matches!(t, Token::Plus | Token::Minus) => {
-            let inner_ast = Box::new(parse(&tokens[1..])?);
-            return Ok(AST::UnaryPlus(inner_ast));
-        }
-        (Token::Minus, t) if !matches!(t, Token::Plus | Token::Minus) => {
-            let inner_ast = Box::new(parse(&tokens[1..])?);
-            return Ok(AST::UnaryMinus(inner_ast));
-        }
+    match &tokens[0] {
+        Token::Plus => match &tokens[1] {
+            token @ (Token::Plus | Token::Minus) => {
+                return Err(ParseError::UnexpectedToken(token.clone()))
+            }
+            _ => {
+                let inner_ast = Box::new(parse(&tokens[1..])?);
+                return Ok(AST::UnaryPlus(inner_ast));
+            }
+        },
+        Token::Minus => match &tokens[1] {
+            token @ (Token::Plus | Token::Minus) => {
+                return Err(ParseError::UnexpectedToken(token.clone()))
+            }
+            _ => {
+                let inner_ast = Box::new(parse(&tokens[1..])?);
+                return Ok(AST::UnaryMinus(inner_ast));
+            }
+        },
         _ => (),
     }
 
