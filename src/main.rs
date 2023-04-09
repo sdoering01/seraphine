@@ -71,6 +71,7 @@ impl Display for ParseError {
 #[derive(Debug)]
 enum EvalError {
     DivideByZero,
+    Overflow,
 }
 
 impl Display for EvalError {
@@ -78,6 +79,7 @@ impl Display for EvalError {
         use EvalError::*;
         match self {
             DivideByZero => write!(f, "Divide by zero"),
+            Overflow => write!(f, "Overflow"),
         }
     }
 }
@@ -121,6 +123,7 @@ fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
             '^' => Token::Caret,
             '(' => Token::LBracket,
             ')' => Token::RBracket,
+            // TODO: Don't parse the number in the tokenizer since this could lead to an overflow
             num_char @ '0'..='9' => {
                 let mut num = num_char as i64 - '0' as i64;
                 while let Some(c) = chars.peek() {
@@ -273,9 +276,15 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
 fn evaluate(ast: &AST) -> Result<i64, EvalError> {
     let result = match ast {
         AST::Number(n) => *n,
-        AST::Add(lhs, rhs) => evaluate(lhs)? + evaluate(rhs)?,
-        AST::Subtract(lhs, rhs) => evaluate(lhs)? - evaluate(rhs)?,
-        AST::Multiply(lhs, rhs) => evaluate(lhs)? * evaluate(rhs)?,
+        AST::Add(lhs, rhs) => evaluate(lhs)?
+            .checked_add(evaluate(rhs)?)
+            .ok_or(EvalError::Overflow)?,
+        AST::Subtract(lhs, rhs) => evaluate(lhs)?
+            .checked_sub(evaluate(rhs)?)
+            .ok_or(EvalError::Overflow)?,
+        AST::Multiply(lhs, rhs) => evaluate(lhs)?
+            .checked_mul(evaluate(rhs)?)
+            .ok_or(EvalError::Overflow)?,
         AST::Divide(lhs, rhs) => {
             let lval = evaluate(lhs)?;
             let rval = evaluate(rhs)?;
@@ -305,12 +314,12 @@ fn evaluate(ast: &AST) -> Result<i64, EvalError> {
                     _ => 0,
                 }
             } else {
-                // TODO: Check for overflow (pow and conversion)
-                lval.pow(rval as u32)
+                let rval = u32::try_from(rval).map_err(|_| EvalError::Overflow)?;
+                lval.checked_pow(rval).ok_or(EvalError::Overflow)?
             }
         }
         AST::UnaryPlus(rhs) => evaluate(rhs)?,
-        AST::UnaryMinus(rhs) => -evaluate(rhs)?,
+        AST::UnaryMinus(rhs) => evaluate(rhs)?.checked_neg().ok_or(EvalError::Overflow)?,
         AST::Brackets(inner) => evaluate(inner)?,
     };
 
@@ -405,5 +414,13 @@ mod tests {
         assert_eq!(eval_str("-1 ^ 5").unwrap(), -1);
         assert_eq!(eval_str("-1 ^ -5").unwrap(), -1);
         assert_eq!(eval_str("(1 + 1) ^ (4 * 2)").unwrap(), 256);
+    }
+
+    #[test]
+    fn test_overflow() {
+        assert!(eval_str("2^63").is_err());
+        assert!(eval_str("2^32 * 2^31").is_err());
+        // 2^62 = 4611686018427387904
+        assert!(eval_str("2^62 + 4611686018427387904").is_err());
     }
 }
