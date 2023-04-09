@@ -87,8 +87,8 @@ enum Token {
     Number(i64),
     Plus,
     Minus,
-    Times,
-    Divide,
+    Star,
+    Slash,
     Caret,
     LBracket,
     RBracket,
@@ -116,8 +116,8 @@ fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
         let token = match c {
             '+' => Token::Plus,
             '-' => Token::Minus,
-            '*' => Token::Times,
-            '/' => Token::Divide,
+            '*' => Token::Star,
+            '/' => Token::Slash,
             '^' => Token::Caret,
             '(' => Token::LBracket,
             ')' => Token::RBracket,
@@ -183,7 +183,7 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
             match (prev_token, token) {
                 // Only take plus or minus if they aren't unary
                 (Token::Number(_), Token::Plus | Token::Minus) => last_pls_mns_idx = Some(idx),
-                (_, Token::Times | Token::Divide) => last_tim_div_idx = Some(idx),
+                (_, Token::Star | Token::Slash) => last_tim_div_idx = Some(idx),
                 (_, Token::Caret) => last_caret_idx = Some(idx),
                 _ => (),
             }
@@ -212,8 +212,8 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
         let l_ast = Box::new(parse(&tokens[..idx])?);
         let r_ast = Box::new(parse(&tokens[(idx + 1)..])?);
         let ast = match tokens[idx] {
-            Token::Times => AST::Multiply(l_ast, r_ast),
-            Token::Divide => AST::Divide(l_ast, r_ast),
+            Token::Star => AST::Multiply(l_ast, r_ast),
+            Token::Slash => AST::Divide(l_ast, r_ast),
             _ => unreachable!(),
         };
         return Ok(ast);
