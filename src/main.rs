@@ -98,6 +98,8 @@ enum AST {
     Subtract(Box<AST>, Box<AST>),
     Multiply(Box<AST>, Box<AST>),
     Divide(Box<AST>, Box<AST>),
+    UnaryPlus(Box<AST>),
+    UnaryMinus(Box<AST>),
 }
 
 fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
@@ -149,8 +151,8 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
 
     if tokens.len() == 2 {
         match (&tokens[0], &tokens[1]) {
-            (Token::Plus, Token::Number(num)) => return Ok(AST::Number(*num)),
-            (Token::Minus, Token::Number(num)) => return Ok(AST::Number(-num)),
+            (Token::Plus, Token::Number(num)) => return Ok(AST::UnaryPlus(Box::new(AST::Number(*num)))),
+            (Token::Minus, Token::Number(num)) => return Ok(AST::UnaryMinus(Box::new(AST::Number(*num)))),
             (t, _) => return Err(ParseError::UnexpectedToken(t.clone())),
         }
     }
@@ -213,6 +215,8 @@ fn evaluate(ast: &AST) -> Result<i64, EvalError> {
             }
             lval / rval
         }
+        AST::UnaryPlus(rhs) => evaluate(rhs)?,
+        AST::UnaryMinus(rhs) => -evaluate(rhs)?,
     };
 
     Ok(result)
