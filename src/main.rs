@@ -1,5 +1,3 @@
-// TODO: Add brackets
-
 use std::fmt::{self, Display, Formatter};
 
 #[derive(Debug)]
@@ -56,6 +54,7 @@ impl Display for TokenizeError {
 enum ParseError {
     NoTokensLeft,
     UnexpectedToken(Token),
+    ExpectedToken(Token),
 }
 
 impl Display for ParseError {
@@ -64,6 +63,7 @@ impl Display for ParseError {
         match self {
             NoTokensLeft => write!(f, "No tokens left to parse"),
             UnexpectedToken(t) => write!(f, "Unexpected token {:?}", t),
+            ExpectedToken(t) => write!(f, "Expected token {:?}", t),
         }
     }
 }
@@ -89,6 +89,8 @@ enum Token {
     Minus,
     Times,
     Divide,
+    LBracket,
+    RBracket,
 }
 
 #[derive(Debug)]
@@ -100,6 +102,7 @@ enum AST {
     Divide(Box<AST>, Box<AST>),
     UnaryPlus(Box<AST>),
     UnaryMinus(Box<AST>),
+    Brackets(Box<AST>),
 }
 
 fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
@@ -113,6 +116,8 @@ fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
             '-' => Token::Minus,
             '*' => Token::Times,
             '/' => Token::Divide,
+            '(' => Token::LBracket,
+            ')' => Token::RBracket,
             num_char @ '0'..='9' => {
                 let mut num = num_char as i64 - '0' as i64;
                 while let Some(c) = chars.peek() {
@@ -143,34 +148,47 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
     if tokens.len() == 1 {
         match &tokens[0] {
             Token::Number(num) => return Ok(AST::Number(*num)),
-            token @ (Token::Plus | Token::Minus | Token::Times | Token::Divide) => {
-                return Err(ParseError::UnexpectedToken(token.clone()))
-            }
-        }
-    }
-
-    if tokens.len() == 2 {
-        match (&tokens[0], &tokens[1]) {
-            (Token::Plus, Token::Number(num)) => return Ok(AST::UnaryPlus(Box::new(AST::Number(*num)))),
-            (Token::Minus, Token::Number(num)) => return Ok(AST::UnaryMinus(Box::new(AST::Number(*num)))),
-            (t, _) => return Err(ParseError::UnexpectedToken(t.clone())),
+            token => return Err(ParseError::UnexpectedToken(token.clone())),
         }
     }
 
     let mut last_pls_mns_idx = None;
     let mut last_tim_div_idx = None;
+    let mut last_rbracket_idx = None;
 
+    let mut bracket_depth = 0;
     for (prev_idx, token_window) in tokens.windows(2).enumerate() {
         let idx = prev_idx + 1;
         let prev_token = &token_window[0];
         let token = &token_window[1];
-        match (prev_token, token) {
-            // Only take plus or minus if it isn't unary
-            (Token::Number(_), Token::Plus | Token::Minus) => last_pls_mns_idx = Some(idx),
-            (_, Token::Times | Token::Divide) => last_tim_div_idx = Some(idx),
-            _ => (),
+
+        if let Token::LBracket = prev_token {
+            bracket_depth += 1;
+        }
+        if let Token::RBracket = token {
+            last_rbracket_idx = Some(idx);
+            bracket_depth -= 1;
+            if bracket_depth < 0 {
+                return Err(ParseError::UnexpectedToken(token.clone()));
+            }
+        }
+
+        // Only take operators if they aren't inside of brackets, since brackets have higher
+        // precedence
+        if bracket_depth == 0 {
+            match (prev_token, token) {
+                // Only take plus or minus if they aren't unary
+                (Token::Number(_), Token::Plus | Token::Minus) => last_pls_mns_idx = Some(idx),
+                (_, Token::Times | Token::Divide) => last_tim_div_idx = Some(idx),
+                _ => (),
+            }
         }
     }
+
+    if bracket_depth != 0 {
+        return Err(ParseError::ExpectedToken(Token::RBracket));
+    }
+    let has_brackets = last_rbracket_idx.is_some();
 
     // Start building AST from the operators of lowest precedence so that those operators are
     // applied last
@@ -196,8 +214,38 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
         return Ok(ast);
     }
 
-    // If we checked for a slice that conatains a single number and haven't found any operators it
-    // means that we have multiple numbers. The second number is an unexpected token.
+    // We checked for all operations outside of brackets, so if the token stream starts with a plus
+    // or minus, it has to be unary.
+    match (&tokens[0], &tokens[1]) {
+        (Token::Plus, t) if !matches!(t, Token::Plus | Token::Minus) => {
+            let inner_ast = Box::new(parse(&tokens[1..])?);
+            return Ok(AST::UnaryPlus(inner_ast));
+        }
+        (Token::Minus, t) if !matches!(t, Token::Plus | Token::Minus) => {
+            let inner_ast = Box::new(parse(&tokens[1..])?);
+            return Ok(AST::UnaryMinus(inner_ast));
+        }
+        _ => (),
+    }
+
+    if has_brackets {
+        match (tokens.first(), tokens.last(), last_rbracket_idx) {
+            (Some(Token::LBracket), Some(Token::RBracket), _) => {
+                let inner_ast = Box::new(parse(&tokens[1..tokens.len() - 1])?);
+                return Ok(AST::Brackets(inner_ast));
+            }
+            // Return correct error when a token that is not an operator follows the brackets
+            (Some(Token::LBracket), _, Some(idx)) => {
+                // SAFETY: The next index exists since all brackets are closed properly at this
+                // point and the last index is not the last closing bracket.
+                return Err(ParseError::UnexpectedToken(tokens[idx + 1].clone()));
+            }
+            _ => (),
+        }
+    }
+
+    // If we checked for a slice that contains a single number and haven't found any operators, it
+    // means that the token at the second index is unexpected.
     Err(ParseError::UnexpectedToken(tokens[1].clone()))
 }
 
@@ -217,6 +265,7 @@ fn evaluate(ast: &AST) -> Result<i64, EvalError> {
         }
         AST::UnaryPlus(rhs) => evaluate(rhs)?,
         AST::UnaryMinus(rhs) => -evaluate(rhs)?,
+        AST::Brackets(inner) => evaluate(inner)?,
     };
 
     Ok(result)
@@ -281,5 +330,18 @@ mod tests {
         assert_eq!(eval_str("-2+-2").unwrap(), -4);
         assert!(eval_str("2---2").is_err());
         assert!(eval_str("2*+-2").is_err());
+    }
+
+    #[test]
+    fn test_brackets() {
+        assert_eq!(eval_str("4 * (5 - 1)").unwrap(), 16);
+        assert_eq!(eval_str("(2 + 2) * (3 + 3)").unwrap(), 24);
+        assert_eq!(eval_str("(2 + 2)").unwrap(), 4);
+        assert_eq!(eval_str("-(2 + 2)").unwrap(), -4);
+        assert_eq!(eval_str("-((2 + 3) * 4)").unwrap(), -20);
+        assert_eq!(eval_str("-((2 + -4) * 5) / 2").unwrap(), 5);
+        assert!(eval_str("-2 + 2)").is_err());
+        assert!(eval_str("-(2 + 2").is_err());
+        assert!(eval_str("()").is_err());
     }
 }
