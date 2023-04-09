@@ -89,6 +89,7 @@ enum Token {
     Minus,
     Times,
     Divide,
+    Caret,
     LBracket,
     RBracket,
 }
@@ -100,6 +101,7 @@ enum AST {
     Subtract(Box<AST>, Box<AST>),
     Multiply(Box<AST>, Box<AST>),
     Divide(Box<AST>, Box<AST>),
+    Power(Box<AST>, Box<AST>),
     UnaryPlus(Box<AST>),
     UnaryMinus(Box<AST>),
     Brackets(Box<AST>),
@@ -116,6 +118,7 @@ fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
             '-' => Token::Minus,
             '*' => Token::Times,
             '/' => Token::Divide,
+            '^' => Token::Caret,
             '(' => Token::LBracket,
             ')' => Token::RBracket,
             num_char @ '0'..='9' => {
@@ -154,6 +157,7 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
 
     let mut last_pls_mns_idx = None;
     let mut last_tim_div_idx = None;
+    let mut last_caret_idx = None;
     let mut last_rbracket_idx = None;
 
     let mut bracket_depth = 0;
@@ -180,6 +184,7 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
                 // Only take plus or minus if they aren't unary
                 (Token::Number(_), Token::Plus | Token::Minus) => last_pls_mns_idx = Some(idx),
                 (_, Token::Times | Token::Divide) => last_tim_div_idx = Some(idx),
+                (_, Token::Caret) => last_caret_idx = Some(idx),
                 _ => (),
             }
         }
@@ -212,6 +217,12 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
             _ => unreachable!(),
         };
         return Ok(ast);
+    }
+
+    if let Some(idx) = last_caret_idx {
+        let l_ast = Box::new(parse(&tokens[..idx])?);
+        let r_ast = Box::new(parse(&tokens[(idx + 1)..])?);
+        return Ok(AST::Power(l_ast, r_ast));
     }
 
     // We checked for all operations outside of brackets, so if the token stream starts with a plus
@@ -262,6 +273,31 @@ fn evaluate(ast: &AST) -> Result<i64, EvalError> {
                 return Err(EvalError::DivideByZero);
             }
             lval / rval
+        }
+        AST::Power(lhs, rhs) => {
+            let lval = evaluate(lhs)?;
+            let rval = evaluate(rhs)?;
+            // a ^ -b is defined as 1 / (a ^ b)
+            if rval < 0 {
+                match lval {
+                    0 => return Err(EvalError::DivideByZero),
+                    // 1 / (1 ^ N) = 1
+                    1 => 1,
+                    // 1 / (-1 ^ N) = { 1 if N even, -1 if N uneven }
+                    -1 => {
+                        if rval % 2 == 0 {
+                            1
+                        } else {
+                            -1
+                        }
+                    }
+                    // 1 / (n ^ N) = 0 where abs(n) >= 2
+                    _ => 0,
+                }
+            } else {
+                // TODO: Check for overflow (pow and conversion)
+                lval.pow(rval as u32)
+            }
         }
         AST::UnaryPlus(rhs) => evaluate(rhs)?,
         AST::UnaryMinus(rhs) => -evaluate(rhs)?,
@@ -343,5 +379,21 @@ mod tests {
         assert!(eval_str("-2 + 2)").is_err());
         assert!(eval_str("-(2 + 2").is_err());
         assert!(eval_str("()").is_err());
+    }
+
+    #[test]
+    fn test_power() {
+        assert!(eval_str("4 ^").is_err());
+        assert!(eval_str("^ 3").is_err());
+        assert_eq!(eval_str("1 ^ -3").unwrap(), 1);
+        assert_eq!(eval_str("(-1) ^ -3").unwrap(), -1);
+        assert_eq!(eval_str("(-1) ^ -4").unwrap(), 1);
+        assert_eq!(eval_str("2 ^ -3").unwrap(), 0);
+        assert_eq!(eval_str("2 ^ 0").unwrap(), 1);
+        assert_eq!(eval_str("3 ^ 5").unwrap(), 243);
+        assert_eq!(eval_str("-1 ^ 4").unwrap(), 1);
+        assert_eq!(eval_str("-1 ^ 5").unwrap(), -1);
+        assert_eq!(eval_str("-1 ^ -5").unwrap(), -1);
+        assert_eq!(eval_str("(1 + 1) ^ (4 * 2)").unwrap(), 256);
     }
 }
