@@ -4,6 +4,42 @@
 use std::fmt::{self, Display, Formatter};
 
 #[derive(Debug)]
+enum CalcError {
+    TokenizeError(TokenizeError),
+    ParseError(ParseError),
+    EvalError(EvalError),
+}
+
+impl Display for CalcError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use CalcError::*;
+        match self {
+            TokenizeError(e) => write!(f, "Tokenize error: {}", e),
+            ParseError(e) => write!(f, "Parse error: {}", e),
+            EvalError(e) => write!(f, "Eval error: {}", e),
+        }
+    }
+}
+
+impl From<TokenizeError> for CalcError {
+    fn from(e: TokenizeError) -> Self {
+        Self::TokenizeError(e)
+    }
+}
+
+impl From<ParseError> for CalcError {
+    fn from(e: ParseError) -> Self {
+        Self::ParseError(e)
+    }
+}
+
+impl From<EvalError> for CalcError {
+    fn from(e: EvalError) -> Self {
+        Self::EvalError(e)
+    }
+}
+
+#[derive(Debug)]
 enum TokenizeError {
     UnexpectedChar(char),
 }
@@ -171,35 +207,19 @@ fn evaluate(ast: &AST) -> Result<i64, EvalError> {
     Ok(result)
 }
 
-fn main() {
+fn main() -> Result<(), CalcError> {
     let expression = "3 * 2 * 5 + 10 / 5 - 8";
 
     println!("Expression: {}", expression);
 
-    let tokens = match tokenize(expression) {
-        Ok(tokens) => {
-            println!("Tokens: {:?}", tokens);
-            tokens
-        }
-        Err(e) => {
-            println!("Tokenize error: {}", e);
-            return;
-        }
-    };
+    let tokens = tokenize(expression)?;
+    println!("Tokens: {:?}", tokens);
 
-    let ast = match parse(&tokens) {
-        Ok(ast) => {
-            println!("AST: {:?}", ast);
-            ast
-        }
-        Err(e) => {
-            println!("Parse error: {}", e);
-            return;
-        }
-    };
+    let ast = parse(&tokens)?;
+    println!("AST: {:?}", ast);
 
-    match evaluate(&ast) {
-        Ok(result) => println!("Result: {}", result),
-        Err(e) => println!("Evaluate error: {}", e),
-    }
+    let result = evaluate(&ast)?;
+    println!("Result: {}", result);
+
+    Ok(())
 }
