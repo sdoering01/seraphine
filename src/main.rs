@@ -1,4 +1,3 @@
-// TODO: Add unary + and - Ops
 // TODO: Add brackets
 
 use std::fmt::{self, Display, Formatter};
@@ -148,13 +147,25 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
         }
     }
 
+    if tokens.len() == 2 {
+        match (&tokens[0], &tokens[1]) {
+            (Token::Plus, Token::Number(num)) => return Ok(AST::Number(*num)),
+            (Token::Minus, Token::Number(num)) => return Ok(AST::Number(-num)),
+            (t, _) => return Err(ParseError::UnexpectedToken(t.clone())),
+        }
+    }
+
     let mut last_pls_mns_idx = None;
     let mut last_tim_div_idx = None;
 
-    for (idx, token) in tokens.iter().enumerate() {
-        match token {
-            Token::Plus | Token::Minus => last_pls_mns_idx = Some(idx),
-            Token::Times | Token::Divide => last_tim_div_idx = Some(idx),
+    for (prev_idx, token_window) in tokens.windows(2).enumerate() {
+        let idx = prev_idx + 1;
+        let prev_token = &token_window[0];
+        let token = &token_window[1];
+        match (prev_token, token) {
+            // Only take plus or minus if it isn't unary
+            (Token::Number(_), Token::Plus | Token::Minus) => last_pls_mns_idx = Some(idx),
+            (_, Token::Times | Token::Divide) => last_tim_div_idx = Some(idx),
             _ => (),
         }
     }
@@ -246,5 +257,25 @@ mod tests {
         assert_eq!(eval_str("2-3").unwrap(), -1);
         assert_eq!(eval_str("2 + 2 * 2").unwrap(), 6);
         assert_eq!(eval_str("3 * 2 * 5 + 10 / 5 - 8").unwrap(), 24);
+    }
+
+    #[test]
+    fn test_unary_plus() {
+        assert_eq!(eval_str("+2").unwrap(), 2);
+        assert_eq!(eval_str("2-+2").unwrap(), 0);
+        assert_eq!(eval_str("2++2").unwrap(), 4);
+        assert_eq!(eval_str("+2++2").unwrap(), 4);
+        assert!(eval_str("2+++2").is_err());
+        assert!(eval_str("2*-+2").is_err());
+    }
+
+    #[test]
+    fn test_unary_minus() {
+        assert_eq!(eval_str("-2").unwrap(), -2);
+        assert_eq!(eval_str("2--2").unwrap(), 4);
+        assert_eq!(eval_str("2+-2").unwrap(), 0);
+        assert_eq!(eval_str("-2+-2").unwrap(), -4);
+        assert!(eval_str("2---2").is_err());
+        assert!(eval_str("2*+-2").is_err());
     }
 }
