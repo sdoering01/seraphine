@@ -1,5 +1,5 @@
 // TODO: Add unary + and - Ops
-// TODO: Build AST in correct order (e.g. * and / before + and +)
+// TODO: Add brackets
 
 use std::fmt::{self, Display, Formatter};
 
@@ -98,47 +98,58 @@ fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
     Ok(tokens)
 }
 
-fn parse(mut tokens: Vec<Token>) -> Result<AST, ParseError> {
-    tokens.reverse();
-    parse_inner(&tokens)
-}
-
-fn parse_inner(tokens: &[Token]) -> Result<AST, ParseError> {
+fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
     if tokens.len() == 0 {
         return Err(ParseError::NoTokensLeft);
     }
 
-    // Simple parse from left to right
-    // NOTE: This is not the correct order!
-    let ast = match (tokens.len(), &tokens[0]) {
-        // Checked above
-        (0, _) => unreachable!(),
-        (1, Token::Number(n)) => AST::Number(*n),
-        (_, Token::Number(n)) => match &tokens[1] {
-            t @ Token::Number(_) => return Err(ParseError::UnexpectedToken(t.clone())),
-            Token::Plus => AST::Add(
-                Box::new(AST::Number(*n)),
-                Box::new(parse_inner(&tokens[2..])?),
-            ),
-            Token::Minus => AST::Subtract(
-                Box::new(AST::Number(*n)),
-                Box::new(parse_inner(&tokens[2..])?),
-            ),
-            Token::Times => AST::Multiply(
-                Box::new(AST::Number(*n)),
-                Box::new(parse_inner(&tokens[2..])?),
-            ),
-            Token::Divide => AST::Divide(
-                Box::new(AST::Number(*n)),
-                Box::new(parse_inner(&tokens[2..])?),
-            ),
-        },
-        (_, token @ (Token::Plus | Token::Minus | Token::Times | Token::Divide)) => {
-            return Err(ParseError::UnexpectedToken(token.clone()))
+    if tokens.len() == 1 {
+        match &tokens[0] {
+            Token::Number(num) => return Ok(AST::Number(*num)),
+            token @ (Token::Plus | Token::Minus | Token::Times | Token::Divide) => {
+                return Err(ParseError::UnexpectedToken(token.clone()))
+            }
         }
-    };
+    }
 
-    Ok(ast)
+    let mut last_pls_mns_idx = None;
+    let mut last_tim_div_idx = None;
+
+    for (idx, token) in tokens.iter().enumerate() {
+        match token {
+            Token::Plus | Token::Minus => last_pls_mns_idx = Some(idx),
+            Token::Times | Token::Divide => last_tim_div_idx = Some(idx),
+            _ => (),
+        }
+    }
+
+    // Start building AST from the operators of lowest precedence so that those operators are
+    // applied last
+    if let Some(idx) = last_pls_mns_idx {
+        let l_ast = Box::new(parse(&tokens[..idx])?);
+        let r_ast = Box::new(parse(&tokens[(idx + 1)..])?);
+        let ast = match tokens[idx] {
+            Token::Plus => AST::Add(l_ast, r_ast),
+            Token::Minus => AST::Subtract(l_ast, r_ast),
+            _ => unreachable!(),
+        };
+        return Ok(ast);
+    }
+
+    if let Some(idx) = last_tim_div_idx {
+        let l_ast = Box::new(parse(&tokens[..idx])?);
+        let r_ast = Box::new(parse(&tokens[(idx + 1)..])?);
+        let ast = match tokens[idx] {
+            Token::Times => AST::Multiply(l_ast, r_ast),
+            Token::Divide => AST::Divide(l_ast, r_ast),
+            _ => unreachable!(),
+        };
+        return Ok(ast);
+    }
+
+    // If we checked for a slice that conatains a single number and haven't found any operators it
+    // means that we have multiple numbers. The second number is an unexpected token.
+    Err(ParseError::UnexpectedToken(tokens[1].clone()))
 }
 
 fn evaluate(ast: &AST) -> Result<i64, EvalError> {
@@ -161,7 +172,7 @@ fn evaluate(ast: &AST) -> Result<i64, EvalError> {
 }
 
 fn main() {
-    let expression = "2 + 2 * 5 + 2";
+    let expression = "3 * 2 * 5 + 10 / 5 - 8";
 
     println!("Expression: {}", expression);
 
@@ -176,7 +187,7 @@ fn main() {
         }
     };
 
-    let ast = match parse(tokens) {
+    let ast = match parse(&tokens) {
         Ok(ast) => {
             println!("AST: {:?}", ast);
             ast
