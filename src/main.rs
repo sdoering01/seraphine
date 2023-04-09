@@ -223,3 +223,28 @@ fn main() -> Result<(), CalcError> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn eval_str(s: &str) -> Result<i64, CalcError> {
+        let tokens = tokenize(s)?;
+        let ast = parse(&tokens)?;
+        let result = evaluate(&ast)?;
+        Ok(result)
+    }
+
+    #[test]
+    fn test_eval_str() {
+        assert!(eval_str("").is_err());
+        assert!(eval_str("-").is_err());
+        assert!(eval_str("* 2").is_err());
+        assert!(eval_str("2 +").is_err());
+        assert_eq!(eval_str("2").unwrap(), 2);
+        assert_eq!(eval_str("2 - 3").unwrap(), -1);
+        assert_eq!(eval_str("2-3").unwrap(), -1);
+        assert_eq!(eval_str("2 + 2 * 2").unwrap(), 6);
+        assert_eq!(eval_str("3 * 2 * 5 + 10 / 5 - 8").unwrap(), 24);
+    }
+}
