@@ -91,6 +91,7 @@ enum Token {
     Minus,
     Star,
     Slash,
+    Percent,
     Caret,
     LBracket,
     RBracket,
@@ -103,6 +104,7 @@ enum AST {
     Subtract(Box<AST>, Box<AST>),
     Multiply(Box<AST>, Box<AST>),
     Divide(Box<AST>, Box<AST>),
+    Modulo(Box<AST>, Box<AST>),
     Power(Box<AST>, Box<AST>),
     UnaryPlus(Box<AST>),
     UnaryMinus(Box<AST>),
@@ -123,6 +125,7 @@ fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
             '^' => Token::Caret,
             '(' => Token::LBracket,
             ')' => Token::RBracket,
+            '%' => Token::Percent,
             // TODO: Don't parse the number in the tokenizer since this could lead to an overflow
             num_char @ '0'..='9' => {
                 let mut num = num_char as i64 - '0' as i64;
@@ -159,7 +162,7 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
     }
 
     let mut last_pls_mns_idx = None;
-    let mut last_tim_div_idx = None;
+    let mut last_tim_div_mod_idx = None;
     let mut last_caret_idx = None;
     let mut last_rbracket_idx = None;
 
@@ -186,7 +189,7 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
             match (prev_token, token) {
                 // Only take plus or minus if they aren't unary
                 (Token::Number(_), Token::Plus | Token::Minus) => last_pls_mns_idx = Some(idx),
-                (_, Token::Star | Token::Slash) => last_tim_div_idx = Some(idx),
+                (_, Token::Star | Token::Slash | Token::Percent) => last_tim_div_mod_idx = Some(idx),
                 (_, Token::Caret) => last_caret_idx = Some(idx),
                 _ => (),
             }
@@ -211,12 +214,13 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
         return Ok(ast);
     }
 
-    if let Some(idx) = last_tim_div_idx {
+    if let Some(idx) = last_tim_div_mod_idx {
         let l_ast = Box::new(parse(&tokens[..idx])?);
         let r_ast = Box::new(parse(&tokens[(idx + 1)..])?);
         let ast = match tokens[idx] {
             Token::Star => AST::Multiply(l_ast, r_ast),
             Token::Slash => AST::Divide(l_ast, r_ast),
+            Token::Percent => AST::Modulo(l_ast, r_ast),
             _ => unreachable!(),
         };
         return Ok(ast);
@@ -292,6 +296,14 @@ fn evaluate(ast: &AST) -> Result<i64, EvalError> {
                 return Err(EvalError::DivideByZero);
             }
             lval / rval
+        }
+        AST::Modulo(lhs, rhs) => {
+            let lval = evaluate(lhs)?;
+            let rval = evaluate(rhs)?;
+            if rval == 0 {
+                return Err(EvalError::DivideByZero);
+            }
+            lval % rval
         }
         AST::Power(lhs, rhs) => {
             let lval = evaluate(lhs)?;
@@ -422,5 +434,18 @@ mod tests {
         assert!(eval_str("2^32 * 2^31").is_err());
         // 2^62 = 4611686018427387904
         assert!(eval_str("2^62 + 4611686018427387904").is_err());
+    }
+
+    #[test]
+    fn test_mod() {
+        assert!(eval_str("2 %").is_err());
+        assert!(eval_str("% 3").is_err());
+        assert!(eval_str("100 % 0").is_err());
+        assert_eq!(eval_str("7 % 3").unwrap(), 1);
+        assert_eq!(eval_str("7 % -3").unwrap(), 1);
+        assert_eq!(eval_str("-7 % 3").unwrap(), -1);
+        assert_eq!(eval_str("-9 % -3").unwrap(), 0);
+        assert_eq!(eval_str("42 % 1337").unwrap(), 42);
+        assert_eq!(eval_str("2 + 3 * 4 % 5").unwrap(), 4);
     }
 }
