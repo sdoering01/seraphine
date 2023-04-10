@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    collections::HashMap,
+    fmt::{self, Display, Formatter},
+};
 
 #[derive(Debug)]
 enum CalcError {
@@ -72,6 +75,7 @@ impl Display for ParseError {
 enum EvalError {
     DivideByZero,
     Overflow,
+    VariableNotDefined(String),
 }
 
 impl Display for EvalError {
@@ -80,12 +84,14 @@ impl Display for EvalError {
         match self {
             DivideByZero => write!(f, "Divide by zero"),
             Overflow => write!(f, "Overflow"),
+            VariableNotDefined(name) => write!(f, "Variable with name '{}' is not defined", name),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 enum Token {
+    Identifier(String),
     Number(i64),
     Plus,
     Minus,
@@ -95,11 +101,13 @@ enum Token {
     Caret,
     LBracket,
     RBracket,
+    Equal,
 }
 
 #[derive(Debug)]
 enum AST {
     Number(i64),
+    Variable(String),
     Add(Box<AST>, Box<AST>),
     Subtract(Box<AST>, Box<AST>),
     Multiply(Box<AST>, Box<AST>),
@@ -109,6 +117,28 @@ enum AST {
     UnaryPlus(Box<AST>),
     UnaryMinus(Box<AST>),
     Brackets(Box<AST>),
+    Assign(String, Box<AST>),
+}
+
+#[derive(Debug)]
+struct Context {
+    variables: HashMap<String, i64>,
+}
+
+impl Context {
+    fn new() -> Self {
+        Self {
+            variables: HashMap::new(),
+        }
+    }
+
+    fn get_var(&self, name: &str) -> Option<i64> {
+        self.variables.get(name).copied()
+    }
+
+    fn set_var(&mut self, name: impl Into<String>, val: i64) {
+        self.variables.insert(name.into(), val);
+    }
 }
 
 fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
@@ -126,6 +156,7 @@ fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
             '(' => Token::LBracket,
             ')' => Token::RBracket,
             '%' => Token::Percent,
+            '=' => Token::Equal,
             // TODO: Don't parse the number in the tokenizer since this could lead to an overflow
             num_char @ '0'..='9' => {
                 let mut num = num_char as i64 - '0' as i64;
@@ -139,6 +170,20 @@ fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
                     }
                 }
                 Token::Number(num)
+            }
+            c @ ('a'..='z' | 'A'..='Z' | '_') => {
+                let mut ident = String::new();
+                ident.push(c);
+                while let Some(c) = chars.peek() {
+                    match c {
+                        'a'..='z' | 'A'..='Z' | '_' | '0'..='9' => {
+                            let c = chars.next().unwrap();
+                            ident.push(c);
+                        }
+                        _ => break,
+                    }
+                }
+                Token::Identifier(ident)
             }
             c if c.is_ascii_whitespace() => continue,
             c => return Err(TokenizeError::UnexpectedChar(c)),
@@ -157,6 +202,7 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
     if tokens.len() == 1 {
         match &tokens[0] {
             Token::Number(num) => return Ok(AST::Number(*num)),
+            Token::Identifier(name) => return Ok(AST::Variable(name.clone())),
             token => return Err(ParseError::UnexpectedToken(token.clone())),
         }
     }
@@ -164,6 +210,7 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
     let mut last_pls_mns_idx = None;
     let mut last_tim_div_mod_idx = None;
     let mut last_caret_idx = None;
+    let mut first_eq_idx = None;
     let mut last_rbracket_idx = None;
 
     let mut bracket_depth = 0;
@@ -187,9 +234,12 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
         // precedence
         if bracket_depth == 0 {
             match (prev_token, token) {
+                (_, Token::Equal) if first_eq_idx.is_none() => first_eq_idx = Some(idx),
                 // Only take plus or minus if they aren't unary
-                (Token::Number(_) | Token::RBracket, Token::Plus | Token::Minus) => last_pls_mns_idx = Some(idx),
-                (_, Token::Star | Token::Slash | Token::Percent) => last_tim_div_mod_idx = Some(idx),
+                (Token::Number(_) | Token::Identifier(_) | Token::RBracket, Token::Plus | Token::Minus) => last_pls_mns_idx = Some(idx),
+                (_, Token::Star | Token::Slash | Token::Percent) => {
+                    last_tim_div_mod_idx = Some(idx)
+                }
                 (_, Token::Caret) => last_caret_idx = Some(idx),
                 _ => (),
             }
@@ -203,6 +253,16 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
 
     // Start building AST from the operators of lowest precedence so that those operators are
     // applied last
+    if let Some(idx) = first_eq_idx {
+        match (&tokens[0], idx) {
+            (Token::Identifier(name), 1) => {
+                let inner_ast = Box::new(parse(&tokens[2..])?);
+                return Ok(AST::Assign(name.clone(), inner_ast));
+            }
+            _ => return Err(ParseError::UnexpectedToken(tokens[1].clone())),
+        }
+    }
+
     if let Some(idx) = last_pls_mns_idx {
         let l_ast = Box::new(parse(&tokens[..idx])?);
         let r_ast = Box::new(parse(&tokens[(idx + 1)..])?);
@@ -277,37 +337,40 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
     Err(ParseError::UnexpectedToken(tokens[1].clone()))
 }
 
-fn evaluate(ast: &AST) -> Result<i64, EvalError> {
+fn evaluate(ast: &AST, ctx: &mut Context) -> Result<i64, EvalError> {
     let result = match ast {
         AST::Number(n) => *n,
-        AST::Add(lhs, rhs) => evaluate(lhs)?
-            .checked_add(evaluate(rhs)?)
+        AST::Variable(name) => ctx
+            .get_var(name)
+            .ok_or_else(|| EvalError::VariableNotDefined(name.clone()))?,
+        AST::Add(lhs, rhs) => evaluate(lhs, ctx)?
+            .checked_add(evaluate(rhs, ctx)?)
             .ok_or(EvalError::Overflow)?,
-        AST::Subtract(lhs, rhs) => evaluate(lhs)?
-            .checked_sub(evaluate(rhs)?)
+        AST::Subtract(lhs, rhs) => evaluate(lhs, ctx)?
+            .checked_sub(evaluate(rhs, ctx)?)
             .ok_or(EvalError::Overflow)?,
-        AST::Multiply(lhs, rhs) => evaluate(lhs)?
-            .checked_mul(evaluate(rhs)?)
+        AST::Multiply(lhs, rhs) => evaluate(lhs, ctx)?
+            .checked_mul(evaluate(rhs, ctx)?)
             .ok_or(EvalError::Overflow)?,
         AST::Divide(lhs, rhs) => {
-            let lval = evaluate(lhs)?;
-            let rval = evaluate(rhs)?;
+            let lval = evaluate(lhs, ctx)?;
+            let rval = evaluate(rhs, ctx)?;
             if rval == 0 {
                 return Err(EvalError::DivideByZero);
             }
             lval / rval
         }
         AST::Modulo(lhs, rhs) => {
-            let lval = evaluate(lhs)?;
-            let rval = evaluate(rhs)?;
+            let lval = evaluate(lhs, ctx)?;
+            let rval = evaluate(rhs, ctx)?;
             if rval == 0 {
                 return Err(EvalError::DivideByZero);
             }
             lval % rval
         }
         AST::Power(lhs, rhs) => {
-            let lval = evaluate(lhs)?;
-            let rval = evaluate(rhs)?;
+            let lval = evaluate(lhs, ctx)?;
+            let rval = evaluate(rhs, ctx)?;
             // a ^ -b is defined as 1 / (a ^ b)
             if rval < 0 {
                 match lval {
@@ -330,9 +393,16 @@ fn evaluate(ast: &AST) -> Result<i64, EvalError> {
                 lval.checked_pow(rval).ok_or(EvalError::Overflow)?
             }
         }
-        AST::UnaryPlus(rhs) => evaluate(rhs)?,
-        AST::UnaryMinus(rhs) => evaluate(rhs)?.checked_neg().ok_or(EvalError::Overflow)?,
-        AST::Brackets(inner) => evaluate(inner)?,
+        AST::UnaryPlus(rhs) => evaluate(rhs, ctx)?,
+        AST::UnaryMinus(rhs) => evaluate(rhs, ctx)?
+            .checked_neg()
+            .ok_or(EvalError::Overflow)?,
+        AST::Brackets(inner) => evaluate(inner, ctx)?,
+        AST::Assign(name, rhs) => {
+            let rval = evaluate(rhs, ctx)?;
+            ctx.set_var(name, rval);
+            rval
+        }
     };
 
     Ok(result)
@@ -349,7 +419,7 @@ fn main() -> Result<(), CalcError> {
     let ast = parse(&tokens)?;
     println!("AST: {:?}", ast);
 
-    let result = evaluate(&ast)?;
+    let result = evaluate(&ast, &mut Context::new())?;
     println!("Result: {}", result);
 
     Ok(())
@@ -362,7 +432,14 @@ mod tests {
     fn eval_str(s: &str) -> Result<i64, CalcError> {
         let tokens = tokenize(s)?;
         let ast = parse(&tokens)?;
-        let result = evaluate(&ast)?;
+        let result = evaluate(&ast, &mut Context::new())?;
+        Ok(result)
+    }
+
+    fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<i64, CalcError> {
+        let tokens = tokenize(s)?;
+        let ast = parse(&tokens)?;
+        let result = evaluate(&ast, ctx)?;
         Ok(result)
     }
 
@@ -451,5 +528,43 @@ mod tests {
         assert_eq!(eval_str("-9 % -3").unwrap(), 0);
         assert_eq!(eval_str("42 % 1337").unwrap(), 42);
         assert_eq!(eval_str("2 + 3 * 4 % 5").unwrap(), 4);
+    }
+
+    #[test]
+    fn test_variables() {
+        let mut ctx = Context::new();
+        assert_eq!(eval_str_ctx("a = 2", &mut ctx).unwrap(), 2);
+        assert_eq!(eval_str_ctx("b = a + 1", &mut ctx).unwrap(), 3);
+        assert_eq!(eval_str_ctx("c = a + b", &mut ctx).unwrap(), 5);
+        assert_eq!(ctx.get_var("a"), Some(2));
+        assert_eq!(ctx.get_var("b"), Some(3));
+        assert_eq!(ctx.get_var("c"), Some(5));
+
+        assert!(eval_str("not_defined").is_err());
+
+        let mut ctx = Context::new();
+        assert_eq!(eval_str_ctx("a = -(b = ((c = -8) * 5) - 2)", &mut ctx).unwrap(), 42);
+        assert_eq!(ctx.get_var("a"), Some(42));
+        assert_eq!(ctx.get_var("b"), Some(-42));
+        assert_eq!(ctx.get_var("c"), Some(-8));
+
+        let mut ctx = Context::new();
+        assert_eq!(eval_str_ctx("some_longer_name = 2", &mut ctx).unwrap(), 2);
+        assert_eq!(ctx.get_var("some_longer_name"), Some(2));
+
+        let mut ctx = Context::new();
+        assert_eq!(eval_str_ctx("(a = 2)", &mut ctx).unwrap(), 2);
+        assert_eq!(ctx.get_var("a"), Some(2));
+
+        let mut ctx = Context::new();
+        assert_eq!(eval_str_ctx("(a = 2) * a", &mut ctx).unwrap(), 4);
+        assert_eq!(ctx.get_var("a"), Some(2));
+
+        assert!(eval_str("a * (a = 2)").is_err());
+
+        assert!(eval_str("a b = 2").is_err());
+        assert!(eval_str("2 = 2").is_err());
+        assert!(eval_str("* = 2").is_err());
+        assert!(eval_str("() = 2").is_err());
     }
 }

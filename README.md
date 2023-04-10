@@ -14,7 +14,7 @@ goal.
 - [x] Basic unary operators: `+`, `-`
 - [x] Basic binary operators: `+`, `-`, `*`, `/`, `%`, `^`
 - [x] Brackets
-- [ ] Variables (`a = 2`, `b = 2`, `c = a + b`)
+- [x] Variables (`a = 2`, `b = 2`, `c = a + b`)
 - [ ] Support for arbitrary precision integers (can currently only handle signed 64-bit integers)
 - [ ] Support for (arbitrary precision) floating point values
 - [ ] Built-in variables (`e`, `pi`, ...)
