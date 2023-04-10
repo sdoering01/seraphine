@@ -188,7 +188,7 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
         if bracket_depth == 0 {
             match (prev_token, token) {
                 // Only take plus or minus if they aren't unary
-                (Token::Number(_), Token::Plus | Token::Minus) => last_pls_mns_idx = Some(idx),
+                (Token::Number(_) | Token::RBracket, Token::Plus | Token::Minus) => last_pls_mns_idx = Some(idx),
                 (_, Token::Star | Token::Slash | Token::Percent) => last_tim_div_mod_idx = Some(idx),
                 (_, Token::Caret) => last_caret_idx = Some(idx),
                 _ => (),
@@ -407,6 +407,7 @@ mod tests {
         assert_eq!(eval_str("-(2 + 2)").unwrap(), -4);
         assert_eq!(eval_str("-((2 + 3) * 4)").unwrap(), -20);
         assert_eq!(eval_str("-((2 + -4) * 5) / 2").unwrap(), 5);
+        assert_eq!(eval_str("(1 + 2) + 3").unwrap(), 6);
         assert!(eval_str("-2 + 2)").is_err());
         assert!(eval_str("-(2 + 2").is_err());
         assert!(eval_str("()").is_err());
