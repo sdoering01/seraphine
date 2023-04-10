@@ -434,6 +434,9 @@ mod tests {
         assert!(eval_str("2^32 * 2^31").is_err());
         // 2^62 = 4611686018427387904
         assert!(eval_str("2^62 + 4611686018427387904").is_err());
+        assert_eq!(eval_str("-2^63").unwrap(), (-2i64).pow(63));
+        assert!(eval_str("-(2^62 * -2)").is_err());
+        assert!(eval_str("-1 * (2^62 * -2)").is_err());
     }
 
     #[test]
