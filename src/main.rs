@@ -507,21 +507,32 @@ fn evaluate(ast: &AST, ctx: &mut Context) -> Result<i64, EvalError> {
     Ok(result)
 }
 
-fn main() -> Result<(), CalcError> {
-    let expression = "3 * 2 * 5 + 10 / 5 - 8";
-
-    println!("Expression: {}", expression);
-
-    let tokens = tokenize(expression)?;
-    println!("Tokens: {:?}", tokens);
-
+fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<i64, CalcError> {
+    let tokens = tokenize(s)?;
     let ast = parse(&tokens)?;
-    println!("AST: {:?}", ast);
+    let result = evaluate(&ast, ctx)?;
+    Ok(result)
+}
 
-    let result = evaluate(&ast, &mut Context::new())?;
-    println!("Result: {}", result);
+fn main() {
+    let mut ctx = Context::new();
 
-    Ok(())
+    loop {
+        let mut input = String::new();
+        match std::io::stdin().read_line(&mut input) {
+            Ok(_) => {
+                let input = input.trim();
+                if input.is_empty() {
+                    continue;
+                }
+                match eval_str_ctx(input, &mut ctx) {
+                    Ok(result) => println!("{}", result),
+                    Err(err) => eprintln!("{}", err),
+                }
+            }
+            Err(err) => eprintln!("Error: {}", err),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -529,17 +540,7 @@ mod tests {
     use super::*;
 
     fn eval_str(s: &str) -> Result<i64, CalcError> {
-        let tokens = tokenize(s)?;
-        let ast = parse(&tokens)?;
-        let result = evaluate(&ast, &mut Context::new())?;
-        Ok(result)
-    }
-
-    fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<i64, CalcError> {
-        let tokens = tokenize(s)?;
-        let ast = parse(&tokens)?;
-        let result = evaluate(&ast, ctx)?;
-        Ok(result)
+        eval_str_ctx(s, &mut Context::new())
     }
 
     #[test]
