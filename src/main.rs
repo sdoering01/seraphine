@@ -198,12 +198,11 @@ mod tests {
         assert!((eval_str("abs(1)").unwrap() - 1.0).abs() < eps);
         assert!((eval_str("min(1, 5)").unwrap() - 1.0).abs() < eps);
         assert!((eval_str("max(1, 5)").unwrap() - 5.0).abs() < eps);
-        // TODO: Implement floating point parsing first
-        // assert!((eval_str("floor(1.5)").unwrap() - 1.0).abs() < eps);
-        // assert!((eval_str("ceil(1.5)").unwrap() - 2.0).abs() < eps);
-        // assert!((eval_str("round(1.5)").unwrap() - 2.0).abs() < eps);
-        // assert!((eval_str("round(1.4)").unwrap() - 1.0).abs() < eps);
-        // assert!((eval_str("round(1.6)").unwrap() - 2.0).abs() < eps);
+        assert!((eval_str("floor(1.5)").unwrap() - 1.0).abs() < eps);
+        assert!((eval_str("ceil(1.5)").unwrap() - 2.0).abs() < eps);
+        assert!((eval_str("round(1.5)").unwrap() - 2.0).abs() < eps);
+        assert!((eval_str("round(1.4)").unwrap() - 1.0).abs() < eps);
+        assert!((eval_str("round(1.6)").unwrap() - 2.0).abs() < eps);
 
         assert!(eval_str("sqrt(-1)").is_err());
         assert!((eval_str("sqrt(4)").unwrap() - 2.0).abs() < eps);
