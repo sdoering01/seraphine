@@ -162,14 +162,55 @@ mod tests {
     }
 
     #[test]
+    fn test_builtin_functions() {
+        use std::f64::consts;
+
+        let eps = 1e-10;
+        assert!((eval_str("sin(pi/2)").unwrap() - 1.0).abs() < eps);
+        assert!((eval_str("cos(pi/2)").unwrap() - 0.0).abs() < eps);
+        assert!((eval_str("tan(pi/4)").unwrap() - 1.0).abs() < eps);
+        assert!((eval_str("asin(1)").unwrap() - consts::FRAC_PI_2).abs() < eps);
+        assert!((eval_str("acos(1)").unwrap() - 0.0).abs() < eps);
+        assert!((eval_str("atan(1)").unwrap() - consts::FRAC_PI_4).abs() < eps);
+        assert!((eval_str("sinh(1)").unwrap() - 1_f64.sinh()).abs() < eps);
+        assert!((eval_str("cosh(1)").unwrap() - 1_f64.cosh()).abs() < eps);
+        assert!((eval_str("tanh(1)").unwrap() - 1_f64.tanh()).abs() < eps);
+
+        assert!((eval_str("ln(e)").unwrap() - 1.0).abs() < eps);
+        assert!((eval_str("log2(1024)").unwrap() - 10.0).abs() < eps);
+        assert!((eval_str("log10(1000)").unwrap() - 3.0).abs() < eps);
+        assert!((eval_str("log(27, 3)").unwrap() - 3.0).abs() < eps);
+
+        assert!((eval_str("abs(-1)").unwrap() - 1.0).abs() < eps);
+        assert!((eval_str("abs(1)").unwrap() - 1.0).abs() < eps);
+        assert!((eval_str("min(1, 5)").unwrap() - 1.0).abs() < eps);
+        assert!((eval_str("max(1, 5)").unwrap() - 5.0).abs() < eps);
+        // TODO: Implement floating point parsing first
+        // assert!((eval_str("floor(1.5)").unwrap() - 1.0).abs() < eps);
+        // assert!((eval_str("ceil(1.5)").unwrap() - 2.0).abs() < eps);
+        // assert!((eval_str("round(1.5)").unwrap() - 2.0).abs() < eps);
+        // assert!((eval_str("round(1.4)").unwrap() - 1.0).abs() < eps);
+        // assert!((eval_str("round(1.6)").unwrap() - 2.0).abs() < eps);
+
+        assert!(eval_str("sqrt(-1)").is_err());
+        assert!((eval_str("sqrt(4)").unwrap() - 2.0).abs() < eps);
+        assert!((eval_str("exp(2)").unwrap() - 7.389056099).abs() < eps);
+    }
+
+    #[test]
     fn test_functions() {
-        assert!(eval_str("add()").is_err());
-        assert!(eval_str("add(1)").is_err());
-        assert!(eval_str("add(1,)").is_err());
-        assert!(eval_str("add(,1)").is_err());
-        assert!(eval_str("add(1 1)").is_err());
-        assert_eq!(eval_str("add(1, 2)").unwrap(), 3.0);
-        assert!(eval_str("add(1, 2, 3)").is_err());
-        assert_eq!(eval_str("add(1, add(2, 3))").unwrap(), 6.0);
+        use crate::eval::Function;
+
+        let mut ctx = Context::new();
+        ctx.add_function("add", Function::new(2, |_ctx, args| args[0] + args[1]));
+
+        assert!(eval_str_ctx("add()", &mut ctx).is_err());
+        assert!(eval_str_ctx("add(1)", &mut ctx).is_err());
+        assert!(eval_str_ctx("add(1,)", &mut ctx).is_err());
+        assert!(eval_str_ctx("add(,1)", &mut ctx).is_err());
+        assert!(eval_str_ctx("add(1 1)", &mut ctx).is_err());
+        assert_eq!(eval_str_ctx("add(1, 2)", &mut ctx).unwrap(), 3.0);
+        assert!(eval_str_ctx("add(1, 2, 3)", &mut ctx).is_err());
+        assert_eq!(eval_str_ctx("add(1, add(2, 3))", &mut ctx).unwrap(), 6.0);
     }
 }

@@ -18,7 +18,7 @@ goal.
 - [ ] Support for arbitrary precision integers (can currently only handle signed 64-bit integers)
 - [ ] Support for (arbitrary precision) floating point values
 - [x] Built-in variables (`e`, `pi`, ...)
-- [ ] Built-in functions (`sin`, `cos`, `log`, ...)
+- [x] Built-in functions (`sin`, `cos`, `log`, ...)
 - [ ] Handle user input (e.g. evaluate lines from a file and stdin)
 - [ ] Interactive terminal REPL
 

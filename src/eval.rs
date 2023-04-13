@@ -11,8 +11,14 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn new(n_args: usize, func: Rc<dyn Fn(&mut Context, &[Number]) -> Number>) -> Self {
-        Self { n_args, func }
+    pub fn new<F>(n_args: usize, func: F) -> Self
+    where
+        F: Fn(&mut Context, &[Number]) -> Number + 'static,
+    {
+        Self {
+            n_args,
+            func: Rc::new(func),
+        }
     }
 
     pub fn call(&self, ctx: &mut Context, args: &[Number]) -> Number {
@@ -27,15 +33,55 @@ pub struct Context {
 
 impl Context {
     pub fn new() -> Self {
+        let mut ctx = Self {
+            variables: HashMap::new(),
+            functions: HashMap::new(),
+        };
+        ctx.add_standard_variables();
+        ctx.add_standard_functions();
+        ctx
+    }
+
+    fn add_standard_variables(&mut self) {
         use std::f64::consts::{E, PI};
 
-        Self {
-            variables: HashMap::from([("pi".to_string(), PI), ("e".to_string(), E)]),
-            functions: HashMap::from([(
-                "add".to_string(),
-                Function::new(2, Rc::new(|_ctx, args| args[0] + args[1])),
-            )]),
-        }
+        self.set_var("pi", PI);
+        self.set_var("e", E);
+    }
+
+    fn add_standard_functions(&mut self) {
+        self.add_function("sin", Function::new(1, |_ctx, args| args[0].sin()));
+        self.add_function("cos", Function::new(1, |_ctx, args| args[0].cos()));
+        self.add_function("tan", Function::new(1, |_ctx, args| args[0].tan()));
+        self.add_function("asin", Function::new(1, |_ctx, args| args[0].asin()));
+        self.add_function("acos", Function::new(1, |_ctx, args| args[0].acos()));
+        self.add_function("atan", Function::new(1, |_ctx, args| args[0].atan()));
+        self.add_function(
+            "atan2",
+            Function::new(2, |_ctx, args| args[0].atan2(args[1])),
+        );
+        self.add_function("tanh", Function::new(1, |_ctx, args| args[0].tanh()));
+        self.add_function("sinh", Function::new(1, |_ctx, args| args[0].sinh()));
+        self.add_function("cosh", Function::new(1, |_ctx, args| args[0].cosh()));
+
+        self.add_function("ln", Function::new(1, |_ctx, args| args[0].ln()));
+        self.add_function("log2", Function::new(1, |_ctx, args| args[0].log2()));
+        self.add_function("log10", Function::new(1, |_ctx, args| args[0].log10()));
+        self.add_function("log", Function::new(2, |_ctx, args| args[0].log(args[1])));
+
+        self.add_function("abs", Function::new(1, |_ctx, args| args[0].abs()));
+        self.add_function("min", Function::new(2, |_ctx, args| args[0].min(args[1])));
+        self.add_function("max", Function::new(2, |_ctx, args| args[0].max(args[1])));
+        self.add_function("floor", Function::new(1, |_ctx, args| args[0].floor()));
+        self.add_function("ceil", Function::new(1, |_ctx, args| args[0].ceil()));
+        self.add_function("round", Function::new(1, |_ctx, args| args[0].round()));
+
+        self.add_function("sqrt", Function::new(1, |_ctx, args| args[0].sqrt()));
+        self.add_function("exp", Function::new(1, |_ctx, args| args[0].exp()));
+    }
+
+    pub fn add_function(&mut self, name: impl Into<String>, func: Function) {
+        self.functions.insert(name.into(), func);
     }
 
     pub fn get_var(&self, name: &str) -> Option<Number> {
