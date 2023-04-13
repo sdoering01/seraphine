@@ -2,24 +2,26 @@ use std::{collections::HashMap, rc::Rc};
 
 use crate::{error::EvalError, parser::AST};
 
+pub type Number = i64;
+
 #[derive(Clone)]
 pub struct Function {
     n_args: usize,
-    func: Rc<dyn Fn(&mut Context, &[i64]) -> i64>,
+    func: Rc<dyn Fn(&mut Context, &[Number]) -> Number>,
 }
 
 impl Function {
-    pub fn new(n_args: usize, func: Rc<dyn Fn(&mut Context, &[i64]) -> i64>) -> Self {
+    pub fn new(n_args: usize, func: Rc<dyn Fn(&mut Context, &[Number]) -> Number>) -> Self {
         Self { n_args, func }
     }
 
-    pub fn call(&self, ctx: &mut Context, args: &[i64]) -> i64 {
+    pub fn call(&self, ctx: &mut Context, args: &[Number]) -> Number {
         (self.func)(ctx, args)
     }
 }
 
 pub struct Context {
-    variables: HashMap<String, i64>,
+    variables: HashMap<String, Number>,
     functions: HashMap<String, Function>,
 }
 
@@ -34,16 +36,16 @@ impl Context {
         }
     }
 
-    pub fn get_var(&self, name: &str) -> Option<i64> {
+    pub fn get_var(&self, name: &str) -> Option<Number> {
         self.variables.get(name).copied()
     }
 
-    pub fn set_var(&mut self, name: impl Into<String>, val: i64) {
+    pub fn set_var(&mut self, name: impl Into<String>, val: Number) {
         self.variables.insert(name.into(), val);
     }
 }
 
-pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<i64, EvalError> {
+pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
     let result = match ast {
         AST::Number(n) => n.parse().map_err(|_| EvalError::Overflow)?,
         AST::Variable(name) => ctx

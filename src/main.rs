@@ -4,12 +4,11 @@ mod parser;
 mod tokenizer;
 
 use error::CalcError;
-use eval::evaluate;
-use eval::Context;
+use eval::{evaluate, Context, Number};
 use parser::parse;
 use tokenizer::tokenize;
 
-fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<i64, CalcError> {
+fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<Number, CalcError> {
     let tokens = tokenize(s)?;
     let ast = parse(&tokens)?;
     let result = evaluate(&ast, ctx)?;
@@ -41,7 +40,7 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn eval_str(s: &str) -> Result<i64, CalcError> {
+    fn eval_str(s: &str) -> Result<Number, CalcError> {
         eval_str_ctx(s, &mut Context::new())
     }
 
