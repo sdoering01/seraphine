@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::{self, Display, Formatter},
+    rc::Rc,
 };
 
 #[derive(Debug)]
@@ -76,6 +77,12 @@ enum EvalError {
     DivideByZero,
     Overflow,
     VariableNotDefined(String),
+    FunctionNotDefined(String),
+    FunctionWrongArgAmount {
+        name: String,
+        expected: usize,
+        got: usize,
+    },
 }
 
 impl Display for EvalError {
@@ -85,6 +92,16 @@ impl Display for EvalError {
             DivideByZero => write!(f, "Divide by zero"),
             Overflow => write!(f, "Overflow"),
             VariableNotDefined(name) => write!(f, "Variable with name '{}' is not defined", name),
+            FunctionNotDefined(name) => write!(f, "Function with name '{}' is not defined", name),
+            FunctionWrongArgAmount {
+                name,
+                expected,
+                got,
+            } => write!(
+                f,
+                "Function '{}' was called with {} arguments but expects {}",
+                name, got, expected
+            ),
         }
     }
 }
@@ -99,6 +116,7 @@ enum Token {
     Slash,
     Percent,
     Caret,
+    Comma,
     LBracket,
     RBracket,
     Equal,
@@ -118,17 +136,40 @@ enum AST {
     UnaryMinus(Box<AST>),
     Brackets(Box<AST>),
     Assign(String, Box<AST>),
+    FunctionCall(String, Vec<AST>),
 }
 
-#[derive(Debug)]
+#[derive(Clone)]
+struct Function {
+    n_args: usize,
+    func: Rc<dyn Fn(&mut Context, &[i64]) -> i64>,
+}
+
+impl Function {
+    fn new(n_args: usize, func: Rc<dyn Fn(&mut Context, &[i64]) -> i64>) -> Self {
+        Self { n_args, func }
+    }
+
+    fn call(&self, ctx: &mut Context, args: &[i64]) -> i64 {
+        (self.func)(ctx, args)
+    }
+}
+
 struct Context {
     variables: HashMap<String, i64>,
+    functions: HashMap<String, Function>,
 }
 
 impl Context {
     fn new() -> Self {
         Self {
             variables: HashMap::new(),
+            functions: HashMap::from([
+                (
+                    "add".to_string(),
+                    Function::new(2, Rc::new(|_ctx, args| args[0] + args[1])),
+                ),
+            ]),
         }
     }
 
@@ -153,6 +194,7 @@ fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
             '*' => Token::Star,
             '/' => Token::Slash,
             '^' => Token::Caret,
+            ',' => Token::Comma,
             '(' => Token::LBracket,
             ')' => Token::RBracket,
             '%' => Token::Percent,
@@ -211,6 +253,7 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
     let mut last_tim_div_mod_idx = None;
     let mut last_caret_idx = None;
     let mut first_eq_idx = None;
+    let mut first_lbracket_idx = None;
     let mut last_rbracket_idx = None;
 
     let mut bracket_depth = 0;
@@ -220,6 +263,9 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
         let token = &token_window[1];
 
         if let Token::LBracket = prev_token {
+            if first_lbracket_idx.is_none() {
+                first_lbracket_idx = Some(prev_idx);
+            }
             bracket_depth += 1;
         }
         if let Token::RBracket = token {
@@ -236,7 +282,10 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
             match (prev_token, token) {
                 (_, Token::Equal) if first_eq_idx.is_none() => first_eq_idx = Some(idx),
                 // Only take plus or minus if they aren't unary
-                (Token::Number(_) | Token::Identifier(_) | Token::RBracket, Token::Plus | Token::Minus) => last_pls_mns_idx = Some(idx),
+                (
+                    Token::Number(_) | Token::Identifier(_) | Token::RBracket,
+                    Token::Plus | Token::Minus,
+                ) => last_pls_mns_idx = Some(idx),
                 (_, Token::Star | Token::Slash | Token::Percent) => {
                     last_tim_div_mod_idx = Some(idx)
                 }
@@ -317,16 +366,43 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
     }
 
     if has_brackets {
-        match (tokens.first(), tokens.last(), last_rbracket_idx) {
-            (Some(Token::LBracket), Some(Token::RBracket), _) => {
+        match (
+            tokens.first(),
+            tokens.last(),
+            first_lbracket_idx,
+            last_rbracket_idx,
+        ) {
+            (Some(Token::LBracket), Some(Token::RBracket), _, _) => {
                 let inner_ast = Box::new(parse(&tokens[1..tokens.len() - 1])?);
                 return Ok(AST::Brackets(inner_ast));
             }
             // Return correct error when a token that is not an operator follows the brackets
-            (Some(Token::LBracket), _, Some(idx)) => {
+            (Some(Token::LBracket), _, _, Some(idx)) => {
                 // SAFETY: The next index exists since all brackets are closed properly at this
                 // point and the last index is not the last closing bracket.
                 return Err(ParseError::UnexpectedToken(tokens[idx + 1].clone()));
+            }
+            (Some(Token::Identifier(name)), Some(Token::RBracket), Some(1), _) => {
+                let mut args = Vec::new();
+                let mut arg_start = 2;
+                let mut arg_end;
+                let mut inner_bracket_depth = 0;
+                for (idx, token) in tokens.iter().enumerate().skip(arg_start + 1) {
+                    match token {
+                        Token::Comma if inner_bracket_depth == 0 => {
+                            arg_end = idx;
+                            let arg = parse(&tokens[arg_start..arg_end])?;
+                            arg_start = arg_end + 1;
+                            args.push(arg);
+                        }
+                        Token::LBracket => inner_bracket_depth += 1,
+                        Token::RBracket => inner_bracket_depth -= 1,
+                        _ => (),
+                    }
+                }
+                let last_arg = parse(&tokens[arg_start..tokens.len() - 1])?;
+                args.push(last_arg);
+                return Ok(AST::FunctionCall(name.clone(), args));
             }
             _ => (),
         }
@@ -402,6 +478,29 @@ fn evaluate(ast: &AST, ctx: &mut Context) -> Result<i64, EvalError> {
             let rval = evaluate(rhs, ctx)?;
             ctx.set_var(name, rval);
             rval
+        }
+        AST::FunctionCall(name, args_ast) => {
+            let func = ctx
+                .functions
+                .get(name)
+                .ok_or_else(|| EvalError::FunctionNotDefined(name.clone()))?
+                .clone();
+
+            let expected_args = func.n_args;
+            let got_args = args_ast.len();
+            if got_args != expected_args {
+                return Err(EvalError::FunctionWrongArgAmount {
+                    name: name.clone(),
+                    expected: expected_args,
+                    got: got_args,
+                });
+            }
+
+            let args: Vec<_> = args_ast
+                .iter()
+                .map(|ast| evaluate(ast, ctx))
+                .collect::<Result<_, _>>()?;
+            func.call(ctx, &args)
         }
     };
 
@@ -566,5 +665,17 @@ mod tests {
         assert!(eval_str("2 = 2").is_err());
         assert!(eval_str("* = 2").is_err());
         assert!(eval_str("() = 2").is_err());
+    }
+
+    #[test]
+    fn test_functions() {
+        assert!(eval_str("add()").is_err());
+        assert!(eval_str("add(1)").is_err());
+        assert!(eval_str("add(1,)").is_err());
+        assert!(eval_str("add(,1)").is_err());
+        assert!(eval_str("add(1 1)").is_err());
+        assert_eq!(eval_str("add(1, 2)").unwrap(), 3);
+        assert!(eval_str("add(1, 2, 3)").is_err());
+        assert_eq!(eval_str("add(1, add(2, 3))").unwrap(), 6);
     }
 }
