@@ -164,12 +164,10 @@ impl Context {
     fn new() -> Self {
         Self {
             variables: HashMap::new(),
-            functions: HashMap::from([
-                (
-                    "add".to_string(),
-                    Function::new(2, Rc::new(|_ctx, args| args[0] + args[1])),
-                ),
-            ]),
+            functions: HashMap::from([(
+                "add".to_string(),
+                Function::new(2, Rc::new(|_ctx, args| args[0] + args[1])),
+            )]),
         }
     }
 
@@ -643,7 +641,10 @@ mod tests {
         assert!(eval_str("not_defined").is_err());
 
         let mut ctx = Context::new();
-        assert_eq!(eval_str_ctx("a = -(b = ((c = -8) * 5) - 2)", &mut ctx).unwrap(), 42);
+        assert_eq!(
+            eval_str_ctx("a = -(b = ((c = -8) * 5) - 2)", &mut ctx).unwrap(),
+            42
+        );
         assert_eq!(ctx.get_var("a"), Some(42));
         assert_eq!(ctx.get_var("b"), Some(-42));
         assert_eq!(ctx.get_var("c"), Some(-8));
