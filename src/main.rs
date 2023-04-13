@@ -92,7 +92,7 @@ impl Display for EvalError {
 #[derive(Debug, Clone)]
 enum Token {
     Identifier(String),
-    Number(i64),
+    Number(String),
     Plus,
     Minus,
     Star,
@@ -106,7 +106,7 @@ enum Token {
 
 #[derive(Debug)]
 enum AST {
-    Number(i64),
+    Number(String),
     Variable(String),
     Add(Box<AST>, Box<AST>),
     Subtract(Box<AST>, Box<AST>),
@@ -157,14 +157,14 @@ fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
             ')' => Token::RBracket,
             '%' => Token::Percent,
             '=' => Token::Equal,
-            // TODO: Don't parse the number in the tokenizer since this could lead to an overflow
-            num_char @ '0'..='9' => {
-                let mut num = num_char as i64 - '0' as i64;
+            c @ '0'..='9' => {
+                let mut num = String::new();
+                num.push(c);
                 while let Some(c) = chars.peek() {
                     match c {
                         '0'..='9' => {
-                            let num_char = chars.next().unwrap();
-                            num = 10 * num + (num_char as i64 - '0' as i64);
+                            let c = chars.next().unwrap();
+                            num.push(c);
                         }
                         _ => break,
                     }
@@ -201,7 +201,7 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
 
     if tokens.len() == 1 {
         match &tokens[0] {
-            Token::Number(num) => return Ok(AST::Number(*num)),
+            Token::Number(num) => return Ok(AST::Number(num.clone())),
             Token::Identifier(name) => return Ok(AST::Variable(name.clone())),
             token => return Err(ParseError::UnexpectedToken(token.clone())),
         }
@@ -339,7 +339,7 @@ fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
 
 fn evaluate(ast: &AST, ctx: &mut Context) -> Result<i64, EvalError> {
     let result = match ast {
-        AST::Number(n) => *n,
+        AST::Number(n) => n.parse().map_err(|_| EvalError::Overflow)?,
         AST::Variable(name) => ctx
             .get_var(name)
             .ok_or_else(|| EvalError::VariableNotDefined(name.clone()))?,
