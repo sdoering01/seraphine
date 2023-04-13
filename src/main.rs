@@ -58,6 +58,19 @@ mod tests {
     }
 
     #[test]
+    fn test_number_parsing() {
+        assert!(eval_str(".1").is_ok());
+        assert!(eval_str("1.1").is_ok());
+        assert!(eval_str("1.").is_ok());
+
+        assert!(eval_str("2.3.4").is_err());
+        assert!(eval_str("..").is_err());
+        assert!(eval_str("..1").is_err());
+        assert!(eval_str("1..").is_err());
+        assert!(eval_str(".1.").is_err());
+    }
+
+    #[test]
     fn test_unary_plus() {
         assert_eq!(eval_str("+2").unwrap(), 2.0);
         assert_eq!(eval_str("2-+2").unwrap(), 0.0);

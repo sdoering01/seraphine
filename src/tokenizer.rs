@@ -33,18 +33,30 @@ pub fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
             ')' => Token::RBracket,
             '%' => Token::Percent,
             '=' => Token::Equal,
-            c @ '0'..='9' => {
+            c @ ('0'..='9' | '.') => {
+                let mut has_dot = c == '.';
+
                 let mut num = String::new();
                 num.push(c);
                 while let Some(c) = chars.peek() {
                     match c {
-                        '0'..='9' => {
-                            let c = chars.next().unwrap();
-                            num.push(c);
+                        '.' => {
+                            if has_dot {
+                                return Err(TokenizeError::UnexpectedChar('.'));
+                            }
+                            has_dot = true;
                         }
+                        '0'..='9' => (),
                         _ => break,
                     }
+                    let c = chars.next().unwrap();
+                    num.push(c);
                 }
+
+                if num == "." {
+                    return Err(TokenizeError::UnexpectedChar('.'));
+                }
+
                 Token::Number(num)
             }
             c @ ('a'..='z' | 'A'..='Z' | '_') => {
