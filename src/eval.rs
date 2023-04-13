@@ -2,7 +2,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use crate::{error::EvalError, parser::AST};
 
-pub type Number = i64;
+pub type Number = f64;
 
 #[derive(Clone)]
 pub struct Function {
@@ -51,19 +51,13 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
         AST::Variable(name) => ctx
             .get_var(name)
             .ok_or_else(|| EvalError::VariableNotDefined(name.clone()))?,
-        AST::Add(lhs, rhs) => evaluate(lhs, ctx)?
-            .checked_add(evaluate(rhs, ctx)?)
-            .ok_or(EvalError::Overflow)?,
-        AST::Subtract(lhs, rhs) => evaluate(lhs, ctx)?
-            .checked_sub(evaluate(rhs, ctx)?)
-            .ok_or(EvalError::Overflow)?,
-        AST::Multiply(lhs, rhs) => evaluate(lhs, ctx)?
-            .checked_mul(evaluate(rhs, ctx)?)
-            .ok_or(EvalError::Overflow)?,
+        AST::Add(lhs, rhs) => evaluate(lhs, ctx)? + evaluate(rhs, ctx)?,
+        AST::Subtract(lhs, rhs) => evaluate(lhs, ctx)? - evaluate(rhs, ctx)?,
+        AST::Multiply(lhs, rhs) => evaluate(lhs, ctx)? * evaluate(rhs, ctx)?,
         AST::Divide(lhs, rhs) => {
             let lval = evaluate(lhs, ctx)?;
             let rval = evaluate(rhs, ctx)?;
-            if rval == 0 {
+            if rval == 0.0 {
                 return Err(EvalError::DivideByZero);
             }
             lval / rval
@@ -71,7 +65,7 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
         AST::Modulo(lhs, rhs) => {
             let lval = evaluate(lhs, ctx)?;
             let rval = evaluate(rhs, ctx)?;
-            if rval == 0 {
+            if rval == 0.0 {
                 return Err(EvalError::DivideByZero);
             }
             lval % rval
@@ -79,32 +73,10 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
         AST::Power(lhs, rhs) => {
             let lval = evaluate(lhs, ctx)?;
             let rval = evaluate(rhs, ctx)?;
-            // a ^ -b is defined as 1 / (a ^ b)
-            if rval < 0 {
-                match lval {
-                    0 => return Err(EvalError::DivideByZero),
-                    // 1 / (1 ^ N) = 1
-                    1 => 1,
-                    // 1 / (-1 ^ N) = { 1 if N even, -1 if N uneven }
-                    -1 => {
-                        if rval % 2 == 0 {
-                            1
-                        } else {
-                            -1
-                        }
-                    }
-                    // 1 / (n ^ N) = 0 where abs(n) >= 2
-                    _ => 0,
-                }
-            } else {
-                let rval = u32::try_from(rval).map_err(|_| EvalError::Overflow)?;
-                lval.checked_pow(rval).ok_or(EvalError::Overflow)?
-            }
+            lval.powf(rval)
         }
         AST::UnaryPlus(rhs) => evaluate(rhs, ctx)?,
-        AST::UnaryMinus(rhs) => evaluate(rhs, ctx)?
-            .checked_neg()
-            .ok_or(EvalError::Overflow)?,
+        AST::UnaryMinus(rhs) => -evaluate(rhs, ctx)?,
         AST::Brackets(inner) => evaluate(inner, ctx)?,
         AST::Assign(name, rhs) => {
             let rval = evaluate(rhs, ctx)?;
@@ -135,6 +107,10 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
             func.call(ctx, &args)
         }
     };
+
+    if !result.is_finite() {
+        return Err(EvalError::Overflow);
+    }
 
     Ok(result)
 }
