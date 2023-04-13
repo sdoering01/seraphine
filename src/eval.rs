@@ -27,8 +27,10 @@ pub struct Context {
 
 impl Context {
     pub fn new() -> Self {
+        use std::f64::consts::{E, PI};
+
         Self {
-            variables: HashMap::new(),
+            variables: HashMap::from([("pi".to_string(), PI), ("e".to_string(), E)]),
             functions: HashMap::from([(
                 "add".to_string(),
                 Function::new(2, Rc::new(|_ctx, args| args[0] + args[1])),
