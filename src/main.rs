@@ -245,4 +245,30 @@ mod tests {
         assert!(eval_str_ctx("add(1, 2, 3)", &mut ctx).is_err());
         assert_eq!(eval_str_ctx("add(1, add(2, 3))", &mut ctx).unwrap(), 6.0);
     }
+
+    #[test]
+    fn test_multiple_lines() {
+        let mut ctx = Context::new();
+
+        let result = eval_str_ctx(
+            r"a = 2
+            b = 3
+            c = a + b",
+            &mut ctx,
+        )
+        .unwrap();
+
+        assert_eq!(result, 5.0);
+        assert_eq!(ctx.get_var("a"), Some(2.0));
+        assert_eq!(ctx.get_var("b"), Some(3.0));
+        assert_eq!(ctx.get_var("c"), Some(5.0));
+
+        assert_eq!(eval_str("\n42\n").unwrap(), 42.0);
+        assert_eq!(eval_str("42\n").unwrap(), 42.0);
+        assert_eq!(eval_str("\n42").unwrap(), 42.0);
+        assert_eq!(eval_str("\n\n\n").unwrap(), 0.0);
+
+        assert!((eval_str("sin(\npi/2\n)").unwrap() - 1.0).abs() < 1e-10);
+        assert_eq!(eval_str("min(\n0\n,\n1\n)").unwrap(), 0.0);
+    }
 }

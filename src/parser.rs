@@ -2,6 +2,7 @@ use crate::{error::ParseError, tokenizer::Token};
 
 #[derive(Debug)]
 pub enum AST {
+    Lines(Vec<Option<AST>>),
     Number(String),
     Variable(String),
     Add(Box<AST>, Box<AST>),
@@ -28,6 +29,12 @@ pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
             Token::Identifier(name) => return Ok(AST::Variable(name.clone())),
             token => return Err(ParseError::UnexpectedToken(token.clone())),
         }
+    }
+
+    let mut line_indices = vec![];
+    // Explicitly handle the first token being a newline, since the loop below starts at the second
+    if let Token::Newline = tokens[0] {
+        line_indices.push(0);
     }
 
     let mut last_pls_mns_idx = None;
@@ -61,6 +68,7 @@ pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
         // precedence
         if bracket_depth == 0 {
             match (prev_token, token) {
+                (_, Token::Newline) => line_indices.push(idx),
                 (_, Token::Equal) if first_eq_idx.is_none() => first_eq_idx = Some(idx),
                 // Only take plus or minus if they aren't unary
                 (
@@ -80,6 +88,26 @@ pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
         return Err(ParseError::ExpectedToken(Token::RBracket));
     }
     let has_brackets = last_rbracket_idx.is_some();
+
+    if line_indices.len() > 0 {
+        line_indices.push(tokens.len());
+        let mut line_asts = vec![];
+        let mut prev_idx = 0;
+        for idx in line_indices {
+            let maybe_ast = if idx == prev_idx {
+                prev_idx += 1;
+                None
+            } else {
+                let line_ast = parse(&tokens[prev_idx..idx])?;
+                prev_idx = idx + 1;
+                Some(line_ast)
+            };
+
+            line_asts.push(maybe_ast);
+        }
+
+        return Ok(AST::Lines(line_asts));
+    }
 
     // Start building AST from the operators of lowest precedence so that those operators are
     // applied last

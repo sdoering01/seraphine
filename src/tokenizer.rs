@@ -14,6 +14,7 @@ pub enum Token {
     LBracket,
     RBracket,
     Equal,
+    Newline,
 }
 
 pub fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
@@ -73,6 +74,7 @@ pub fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
                 }
                 Token::Identifier(ident)
             }
+            '\n' => Token::Newline,
             c if c.is_ascii_whitespace() => continue,
             c => return Err(TokenizeError::UnexpectedChar(c)),
         };

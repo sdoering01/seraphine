@@ -95,6 +95,13 @@ impl Context {
 
 pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
     let result = match ast {
+        AST::Lines(lines) => {
+            let mut result = 0.0;
+            for line in lines.into_iter().flatten() {
+                result = evaluate(line, ctx)?;
+            }
+            result
+        }
         AST::Number(n) => n.parse().map_err(|_| EvalError::Overflow)?,
         AST::Variable(name) => ctx
             .get_var(name)
