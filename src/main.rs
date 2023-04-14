@@ -15,7 +15,15 @@ fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<Number, CalcError> {
     Ok(result)
 }
 
-fn main() {
+fn eval_file(path: &str) -> Result<(), CalcError> {
+    let mut ctx = Context::new();
+    let contents = std::fs::read_to_string(path)?;
+    let result = eval_str_ctx(&contents, &mut ctx)?;
+    println!("{}", result);
+    Ok(())
+}
+
+fn repl() {
     let mut ctx = Context::new();
 
     loop {
@@ -34,6 +42,18 @@ fn main() {
             Err(err) => eprintln!("Error: {}", err),
         }
     }
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        if let Err(err) = eval_file(&args[1]) {
+            eprintln!("{}", err);
+        }
+        return;
+    }
+
+    repl();
 }
 
 #[cfg(test)]

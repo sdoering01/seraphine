@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    io,
+};
 
 use crate::tokenizer::Token;
 
@@ -7,6 +10,7 @@ pub enum CalcError {
     TokenizeError(TokenizeError),
     ParseError(ParseError),
     EvalError(EvalError),
+    IoError(io::Error),
 }
 
 impl Display for CalcError {
@@ -16,6 +20,7 @@ impl Display for CalcError {
             TokenizeError(e) => write!(f, "Tokenize error: {}", e),
             ParseError(e) => write!(f, "Parse error: {}", e),
             EvalError(e) => write!(f, "Eval error: {}", e),
+            IoError(e) => write!(f, "IO error: {}", e),
         }
     }
 }
@@ -35,6 +40,12 @@ impl From<ParseError> for CalcError {
 impl From<EvalError> for CalcError {
     fn from(e: EvalError) -> Self {
         Self::EvalError(e)
+    }
+}
+
+impl From<io::Error> for CalcError {
+    fn from(e: io::Error) -> Self {
+        Self::IoError(e)
     }
 }
 
