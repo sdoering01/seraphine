@@ -267,8 +267,14 @@ mod tests {
         assert_eq!(eval_str("42\n").unwrap(), 42.0);
         assert_eq!(eval_str("\n42").unwrap(), 42.0);
         assert_eq!(eval_str("\n\n\n").unwrap(), 0.0);
+    }
 
-        assert!((eval_str("sin(\npi/2\n)").unwrap() - 1.0).abs() < 1e-10);
-        assert_eq!(eval_str("min(\n0\n,\n1\n)").unwrap(), 0.0);
+    #[test]
+    fn test_newlines_not_allowed() {
+        assert!(eval_str("1 + \n 2").is_err());
+        assert!(eval_str("sin(pi\n/2)").is_err());
+        assert!(eval_str("sin(\npi/2)").is_err());
+        assert!(eval_str("1 * (2 + \n 3)").is_err());
+        assert!(eval_str("a = \n2").is_err());
     }
 }

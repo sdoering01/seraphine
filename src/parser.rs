@@ -19,6 +19,10 @@ pub enum AST {
 }
 
 pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
+    inner_parse(tokens, true)
+}
+
+fn inner_parse(tokens: &[Token], newlines_allowed: bool) -> Result<AST, ParseError> {
     if tokens.len() == 0 {
         return Err(ParseError::NoTokensLeft);
     }
@@ -90,6 +94,10 @@ pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
     let has_brackets = last_rbracket_idx.is_some();
 
     if line_indices.len() > 0 {
+        if !newlines_allowed {
+            return Err(ParseError::UnexpectedToken(tokens[line_indices[0]].clone()));
+        }
+        
         line_indices.push(tokens.len());
         let mut line_asts = vec![];
         let mut prev_idx = 0;
@@ -98,7 +106,7 @@ pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
                 prev_idx += 1;
                 None
             } else {
-                let line_ast = parse(&tokens[prev_idx..idx])?;
+                let line_ast = inner_parse(&tokens[prev_idx..idx], newlines_allowed)?;
                 prev_idx = idx + 1;
                 Some(line_ast)
             };
@@ -114,7 +122,7 @@ pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
     if let Some(idx) = first_eq_idx {
         match (&tokens[0], idx) {
             (Token::Identifier(name), 1) => {
-                let inner_ast = Box::new(parse(&tokens[2..])?);
+                let inner_ast = Box::new(inner_parse(&tokens[2..], false)?);
                 return Ok(AST::Assign(name.clone(), inner_ast));
             }
             _ => return Err(ParseError::UnexpectedToken(tokens[1].clone())),
@@ -122,8 +130,8 @@ pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
     }
 
     if let Some(idx) = last_pls_mns_idx {
-        let l_ast = Box::new(parse(&tokens[..idx])?);
-        let r_ast = Box::new(parse(&tokens[(idx + 1)..])?);
+        let l_ast = Box::new(inner_parse(&tokens[..idx], false)?);
+        let r_ast = Box::new(inner_parse(&tokens[(idx + 1)..], false)?);
         let ast = match tokens[idx] {
             Token::Plus => AST::Add(l_ast, r_ast),
             Token::Minus => AST::Subtract(l_ast, r_ast),
@@ -133,8 +141,8 @@ pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
     }
 
     if let Some(idx) = last_tim_div_mod_idx {
-        let l_ast = Box::new(parse(&tokens[..idx])?);
-        let r_ast = Box::new(parse(&tokens[(idx + 1)..])?);
+        let l_ast = Box::new(inner_parse(&tokens[..idx], false)?);
+        let r_ast = Box::new(inner_parse(&tokens[(idx + 1)..], false)?);
         let ast = match tokens[idx] {
             Token::Star => AST::Multiply(l_ast, r_ast),
             Token::Slash => AST::Divide(l_ast, r_ast),
@@ -145,8 +153,8 @@ pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
     }
 
     if let Some(idx) = last_caret_idx {
-        let l_ast = Box::new(parse(&tokens[..idx])?);
-        let r_ast = Box::new(parse(&tokens[(idx + 1)..])?);
+        let l_ast = Box::new(inner_parse(&tokens[..idx], false)?);
+        let r_ast = Box::new(inner_parse(&tokens[(idx + 1)..], false)?);
         return Ok(AST::Power(l_ast, r_ast));
     }
 
@@ -158,7 +166,7 @@ pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
                 return Err(ParseError::UnexpectedToken(token.clone()))
             }
             _ => {
-                let inner_ast = Box::new(parse(&tokens[1..])?);
+                let inner_ast = Box::new(inner_parse(&tokens[1..], false)?);
                 return Ok(AST::UnaryPlus(inner_ast));
             }
         },
@@ -167,7 +175,7 @@ pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
                 return Err(ParseError::UnexpectedToken(token.clone()))
             }
             _ => {
-                let inner_ast = Box::new(parse(&tokens[1..])?);
+                let inner_ast = Box::new(inner_parse(&tokens[1..], false)?);
                 return Ok(AST::UnaryMinus(inner_ast));
             }
         },
@@ -182,7 +190,7 @@ pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
             last_rbracket_idx,
         ) {
             (Some(Token::LBracket), Some(Token::RBracket), _, _) => {
-                let inner_ast = Box::new(parse(&tokens[1..tokens.len() - 1])?);
+                let inner_ast = Box::new(inner_parse(&tokens[1..tokens.len() - 1], false)?);
                 return Ok(AST::Brackets(inner_ast));
             }
             // Return correct error when a token that is not an operator follows the brackets
@@ -200,7 +208,7 @@ pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
                     match token {
                         Token::Comma if inner_bracket_depth == 0 => {
                             arg_end = idx;
-                            let arg = parse(&tokens[arg_start..arg_end])?;
+                            let arg = inner_parse(&tokens[arg_start..arg_end], false)?;
                             arg_start = arg_end + 1;
                             args.push(arg);
                         }
@@ -209,7 +217,7 @@ pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
                         _ => (),
                     }
                 }
-                let last_arg = parse(&tokens[arg_start..tokens.len() - 1])?;
+                let last_arg = inner_parse(&tokens[arg_start..tokens.len() - 1], false)?;
                 args.push(last_arg);
                 return Ok(AST::FunctionCall(name.clone(), args));
             }
