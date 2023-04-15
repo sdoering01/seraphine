@@ -234,7 +234,11 @@ mod tests {
         use crate::eval::Function;
 
         let mut ctx = Context::new();
-        ctx.add_function("add", Function::new(2, |_ctx, args| args[0] + args[1]));
+        ctx.add_function(
+            "add",
+            Function::new_builtin(2, |_ctx, args| args[0] + args[1]),
+        )
+        .unwrap();
 
         assert!(eval_str_ctx("add()", &mut ctx).is_err());
         assert!(eval_str_ctx("add(1)", &mut ctx).is_err());
@@ -276,5 +280,30 @@ mod tests {
         assert!(eval_str("sin(\npi/2)").is_err());
         assert!(eval_str("1 * (2 + \n 3)").is_err());
         assert!(eval_str("a = \n2").is_err());
+    }
+
+    #[test]
+    fn test_user_functions() {
+        let code = "\
+            fn add(a, b, c) {\n\
+                a + b + c\n\
+            }\n\
+            \n\
+            fn sub(a, b) {\n\
+                a - b\n\
+            }\n\
+            \n\
+            sub(42, add(1, 2, 3))";
+        assert_eq!(eval_str(code).unwrap(), 36.0);
+
+        assert!(eval_str("fn add(a, {b) a + b }").is_err());
+        assert!(eval_str("fn empty_body() {}").is_err());
+        assert!(eval_str("fn no_args() {\n inspect(1)\n }").is_ok());
+        assert!(eval_str("fn one_liner(a, b) { a + b }").is_ok());
+        assert!(eval_str("fn trailing_comma(a, b,) { a + b }").is_err());
+        assert!(eval_str("fn leading_comma(, a, b) { a + b }").is_err());
+        assert!(eval_str("fn no_comma(a b) { a + b }").is_err());
+        assert!(eval_str("fn contains_expression(a, b, 1 + 1) { a + b }").is_err());
+        assert!(eval_str("fn duplicate_arg_name(a, a) { a + a }").is_err());
     }
 }

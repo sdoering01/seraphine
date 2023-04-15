@@ -68,6 +68,7 @@ pub enum ParseError {
     NoTokensLeft,
     UnexpectedToken(Token),
     ExpectedToken(Token),
+    ExpectedIdentifier,
 }
 
 impl Display for ParseError {
@@ -77,6 +78,7 @@ impl Display for ParseError {
             NoTokensLeft => write!(f, "No tokens left to parse"),
             UnexpectedToken(t) => write!(f, "Unexpected token {:?}", t),
             ExpectedToken(t) => write!(f, "Expected token {:?}", t),
+            ExpectedIdentifier => write!(f, "Expected identifier"),
         }
     }
 }
@@ -87,11 +89,14 @@ pub enum EvalError {
     Overflow,
     VariableNotDefined(String),
     FunctionNotDefined(String),
+    FunctionAlreadyDefined(String),
     FunctionWrongArgAmount {
         name: String,
         expected: usize,
         got: usize,
     },
+    DuplicateArgName{ func_name: String, arg_name: String },
+    CallStackOverflow,
 }
 
 impl Display for EvalError {
@@ -102,6 +107,9 @@ impl Display for EvalError {
             Overflow => write!(f, "Overflow"),
             VariableNotDefined(name) => write!(f, "Variable with name '{}' is not defined", name),
             FunctionNotDefined(name) => write!(f, "Function with name '{}' is not defined", name),
+            FunctionAlreadyDefined(name) => {
+                write!(f, "Function with name '{}' is already defined", name)
+            }
             FunctionWrongArgAmount {
                 name,
                 expected,
@@ -111,6 +119,8 @@ impl Display for EvalError {
                 "Function '{}' was called with {} arguments but expects {}",
                 name, got, expected
             ),
+            DuplicateArgName{ func_name, arg_name } => write!(f, "Function '{}' has duplicate argument name '{}'", func_name, arg_name),
+            CallStackOverflow => write!(f, "Call stack overflow (too many nested function calls)"),
         }
     }
 }
