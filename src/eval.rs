@@ -227,6 +227,14 @@ impl Context {
         )?;
         self.add_function("exp", Function::new_builtin(1, |_ctx, args| args[0].exp()))?;
 
+        self.add_function(
+            "inspect",
+            Function::new_builtin(1, |_ctx, args| {
+                println!("{}", args[0]);
+                args[0]
+            }),
+        )?;
+
         Ok(())
     }
 
