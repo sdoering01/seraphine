@@ -40,12 +40,6 @@ fn inner_parse(tokens: &[Token], statements_allowed: bool) -> Result<AST, ParseE
         }
     }
 
-    let mut line_indices = vec![];
-    // Explicitly handle the first token being a newline, since the loop below starts at the second
-    if let Token::Newline = tokens[0] {
-        line_indices.push(0);
-    }
-
     let mut last_pls_mns_idx = None;
     let mut last_tim_div_mod_idx = None;
     let mut last_caret_idx = None;
@@ -56,47 +50,9 @@ fn inner_parse(tokens: &[Token], statements_allowed: bool) -> Result<AST, ParseE
     let mut first_lbrace_idx = None;
     let mut last_rbrace_idx = None;
 
-    // TODO: Clean this up
+    let mut line_indices = Vec::new();
     let mut bracket_stack = Vec::new();
-    match tokens[0] {
-        Token::LParen => {
-            if first_lparen_idx.is_none() && bracket_stack.is_empty() {
-                first_lparen_idx = Some(0);
-            }
-            bracket_stack.push(tokens[0].clone());
-        }
-        Token::LBrace => {
-            if first_lbrace_idx.is_none() && bracket_stack.is_empty() {
-                first_lbrace_idx = Some(0);
-            }
-            bracket_stack.push(tokens[0].clone());
-        }
-        Token::RParen => {
-            match bracket_stack.pop() {
-                Some(Token::LParen) => (),
-                _ => return Err(ParseError::UnexpectedToken(tokens[0].clone())),
-            }
-            if bracket_stack.is_empty() {
-                last_rparen_idx = Some(0);
-            }
-        }
-        Token::RBrace => {
-            match bracket_stack.pop() {
-                Some(Token::LBrace) => (),
-                _ => return Err(ParseError::UnexpectedToken(tokens[0].clone())),
-            }
-            if bracket_stack.is_empty() {
-                last_rbrace_idx = Some(0);
-            }
-        }
-        _ => (),
-    }
-
-    for (prev_idx, token_window) in tokens.windows(2).enumerate() {
-        let idx = prev_idx + 1;
-        let prev_token = &token_window[0];
-        let token = &token_window[1];
-
+    for (idx, token) in tokens.into_iter().enumerate() {
         match token {
             Token::LParen => {
                 if first_lparen_idx.is_none() && bracket_stack.is_empty() {
@@ -134,12 +90,13 @@ fn inner_parse(tokens: &[Token], statements_allowed: bool) -> Result<AST, ParseE
         // Only take operators if they aren't inside of brackets, since brackets have higher
         // precedence
         if bracket_stack.is_empty() {
+            let prev_token = idx.checked_sub(1).and_then(|prev_idx| tokens.get(prev_idx));
             match (prev_token, token) {
                 (_, Token::Newline) => line_indices.push(idx),
                 (_, Token::Equal) if first_eq_idx.is_none() => first_eq_idx = Some(idx),
                 // Only take plus or minus if they aren't unary
                 (
-                    Token::Number(_) | Token::Identifier(_) | Token::RParen,
+                    Some(Token::Number(_)) | Some(Token::Identifier(_)) | Some(Token::RParen),
                     Token::Plus | Token::Minus,
                 ) => last_pls_mns_idx = Some(idx),
                 (_, Token::Star | Token::Slash | Token::Percent) => {
