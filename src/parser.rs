@@ -54,13 +54,13 @@ fn inner_parse(tokens: &[Token], newlines_allowed: bool) -> Result<AST, ParseErr
         let prev_token = &token_window[0];
         let token = &token_window[1];
 
-        if let Token::LBracket = prev_token {
+        if let Token::LParen = prev_token {
             if first_lbracket_idx.is_none() {
                 first_lbracket_idx = Some(prev_idx);
             }
             bracket_depth += 1;
         }
-        if let Token::RBracket = token {
+        if let Token::RParen = token {
             last_rbracket_idx = Some(idx);
             bracket_depth -= 1;
             if bracket_depth < 0 {
@@ -76,7 +76,7 @@ fn inner_parse(tokens: &[Token], newlines_allowed: bool) -> Result<AST, ParseErr
                 (_, Token::Equal) if first_eq_idx.is_none() => first_eq_idx = Some(idx),
                 // Only take plus or minus if they aren't unary
                 (
-                    Token::Number(_) | Token::Identifier(_) | Token::RBracket,
+                    Token::Number(_) | Token::Identifier(_) | Token::RParen,
                     Token::Plus | Token::Minus,
                 ) => last_pls_mns_idx = Some(idx),
                 (_, Token::Star | Token::Slash | Token::Percent) => {
@@ -89,7 +89,7 @@ fn inner_parse(tokens: &[Token], newlines_allowed: bool) -> Result<AST, ParseErr
     }
 
     if bracket_depth != 0 {
-        return Err(ParseError::ExpectedToken(Token::RBracket));
+        return Err(ParseError::ExpectedToken(Token::RParen));
     }
     let has_brackets = last_rbracket_idx.is_some();
 
@@ -189,17 +189,17 @@ fn inner_parse(tokens: &[Token], newlines_allowed: bool) -> Result<AST, ParseErr
             first_lbracket_idx,
             last_rbracket_idx,
         ) {
-            (Some(Token::LBracket), Some(Token::RBracket), _, _) => {
+            (Some(Token::LParen), Some(Token::RParen), _, _) => {
                 let inner_ast = Box::new(inner_parse(&tokens[1..tokens.len() - 1], false)?);
                 return Ok(AST::Brackets(inner_ast));
             }
             // Return correct error when a token that is not an operator follows the brackets
-            (Some(Token::LBracket), _, _, Some(idx)) => {
+            (Some(Token::LParen), _, _, Some(idx)) => {
                 // SAFETY: The next index exists since all brackets are closed properly at this
                 // point and the last index is not the last closing bracket.
                 return Err(ParseError::UnexpectedToken(tokens[idx + 1].clone()));
             }
-            (Some(Token::Identifier(name)), Some(Token::RBracket), Some(1), _) => {
+            (Some(Token::Identifier(name)), Some(Token::RParen), Some(1), _) => {
                 let mut args = Vec::new();
                 let mut arg_start = 2;
                 let mut arg_end;
@@ -212,8 +212,8 @@ fn inner_parse(tokens: &[Token], newlines_allowed: bool) -> Result<AST, ParseErr
                             arg_start = arg_end + 1;
                             args.push(arg);
                         }
-                        Token::LBracket => inner_bracket_depth += 1,
-                        Token::RBracket => inner_bracket_depth -= 1,
+                        Token::LParen => inner_bracket_depth += 1,
+                        Token::RParen => inner_bracket_depth -= 1,
                         _ => (),
                     }
                 }

@@ -11,8 +11,8 @@ pub enum Token {
     Percent,
     Caret,
     Comma,
-    LBracket,
-    RBracket,
+    LParen,
+    RParen,
     Equal,
     Newline,
 }
@@ -30,8 +30,8 @@ pub fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
             '/' => Token::Slash,
             '^' => Token::Caret,
             ',' => Token::Comma,
-            '(' => Token::LBracket,
-            ')' => Token::RBracket,
+            '(' => Token::LParen,
+            ')' => Token::RParen,
             '%' => Token::Percent,
             '=' => Token::Equal,
             c @ ('0'..='9' | '.') => {
