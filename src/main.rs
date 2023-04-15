@@ -1,9 +1,11 @@
+use std::io::{self, Write};
+
 mod error;
 mod eval;
 mod parser;
 mod tokenizer;
 
-use error::CalcError;
+use error::{CalcError, ParseError};
 use eval::{evaluate, Context, Number};
 use parser::parse;
 use tokenizer::tokenize;
@@ -25,18 +27,32 @@ fn eval_file(path: &str) -> Result<(), CalcError> {
 
 fn repl() {
     let mut ctx = Context::new();
+    let stdout = io::stdout();
+    let mut input = String::new();
 
     loop {
-        let mut input = String::new();
-        match std::io::stdin().read_line(&mut input) {
+        let mut line = String::new();
+        match std::io::stdin().read_line(&mut line) {
             Ok(_) => {
-                let input = input.trim();
-                if input.is_empty() {
+                let line = line.trim();
+                if line.is_empty() {
                     continue;
                 }
-                match eval_str_ctx(input, &mut ctx) {
-                    Ok(result) => println!("{}", result),
-                    Err(err) => eprintln!("{}", err),
+                input.push_str(line);
+                match eval_str_ctx(&input, &mut ctx) {
+                    Ok(result) => {
+                        println!("{}", result);
+                        input.clear();
+                    }
+                    Err(CalcError::ParseError(ParseError::UnmatchedBracket(_))) => {
+                        input.push('\n');
+                        print!("> ");
+                        stdout.lock().flush().expect("Failed to flush stdout");
+                    }
+                    Err(err) => {
+                        eprintln!("{}", err);
+                        input.clear();
+                    }
                 }
             }
             Err(err) => eprintln!("Error: {}", err),

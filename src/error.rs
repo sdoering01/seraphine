@@ -69,6 +69,7 @@ pub enum ParseError {
     UnexpectedToken(Token),
     ExpectedToken(Token),
     ExpectedIdentifier,
+    UnmatchedBracket(Token),
 }
 
 impl Display for ParseError {
@@ -79,6 +80,7 @@ impl Display for ParseError {
             UnexpectedToken(t) => write!(f, "Unexpected token {:?}", t),
             ExpectedToken(t) => write!(f, "Expected token {:?}", t),
             ExpectedIdentifier => write!(f, "Expected identifier"),
+            UnmatchedBracket(t) => write!(f, "Unmatched bracket {:?}", t),
         }
     }
 }

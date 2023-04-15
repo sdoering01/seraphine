@@ -56,41 +56,79 @@ fn inner_parse(tokens: &[Token], statements_allowed: bool) -> Result<AST, ParseE
     let mut first_lbrace_idx = None;
     let mut last_rbrace_idx = None;
 
+    // TODO: Clean this up
     let mut bracket_stack = Vec::new();
+    match tokens[0] {
+        Token::LParen => {
+            if first_lparen_idx.is_none() && bracket_stack.is_empty() {
+                first_lparen_idx = Some(0);
+            }
+            bracket_stack.push(tokens[0].clone());
+        }
+        Token::LBrace => {
+            if first_lbrace_idx.is_none() && bracket_stack.is_empty() {
+                first_lbrace_idx = Some(0);
+            }
+            bracket_stack.push(tokens[0].clone());
+        }
+        Token::RParen => {
+            match bracket_stack.pop() {
+                Some(Token::LParen) => (),
+                _ => return Err(ParseError::UnexpectedToken(tokens[0].clone())),
+            }
+            if bracket_stack.is_empty() {
+                last_rparen_idx = Some(0);
+            }
+        }
+        Token::RBrace => {
+            match bracket_stack.pop() {
+                Some(Token::LBrace) => (),
+                _ => return Err(ParseError::UnexpectedToken(tokens[0].clone())),
+            }
+            if bracket_stack.is_empty() {
+                last_rbrace_idx = Some(0);
+            }
+        }
+        _ => (),
+    }
+
     for (prev_idx, token_window) in tokens.windows(2).enumerate() {
         let idx = prev_idx + 1;
         let prev_token = &token_window[0];
         let token = &token_window[1];
 
-        if let Token::LParen = prev_token {
-            if first_lparen_idx.is_none() && bracket_stack.is_empty() {
-                first_lparen_idx = Some(prev_idx);
+        match token {
+            Token::LParen => {
+                if first_lparen_idx.is_none() && bracket_stack.is_empty() {
+                    first_lparen_idx = Some(idx);
+                }
+                bracket_stack.push(token.clone());
             }
-            bracket_stack.push(prev_token);
-        }
-        if let Token::LBrace = prev_token {
-            if first_lbrace_idx.is_none() && bracket_stack.is_empty() {
-                first_lbrace_idx = Some(prev_idx);
+            Token::LBrace => {
+                if first_lbrace_idx.is_none() && bracket_stack.is_empty() {
+                    first_lbrace_idx = Some(idx);
+                }
+                bracket_stack.push(token.clone());
             }
-            bracket_stack.push(prev_token);
-        }
-        if let Token::RParen = token {
-            match bracket_stack.pop() {
-                Some(Token::LParen) => (),
-                _ => return Err(ParseError::UnexpectedToken(token.clone())),
+            Token::RParen => {
+                match bracket_stack.pop() {
+                    Some(Token::LParen) => (),
+                    _ => return Err(ParseError::UnexpectedToken(token.clone())),
+                }
+                if bracket_stack.is_empty() {
+                    last_rparen_idx = Some(idx);
+                }
             }
-            if bracket_stack.is_empty() {
-                last_rparen_idx = Some(idx);
+            Token::RBrace => {
+                match bracket_stack.pop() {
+                    Some(Token::LBrace) => (),
+                    _ => return Err(ParseError::UnexpectedToken(token.clone())),
+                }
+                if bracket_stack.is_empty() {
+                    last_rbrace_idx = Some(idx);
+                }
             }
-        }
-        if let Token::RBrace = token {
-            match bracket_stack.pop() {
-                Some(Token::LBrace) => (),
-                _ => return Err(ParseError::UnexpectedToken(token.clone())),
-            }
-            if bracket_stack.is_empty() {
-                last_rbrace_idx = Some(idx);
-            }
+            _ => (),
         }
 
         // Only take operators if they aren't inside of brackets, since brackets have higher
@@ -114,8 +152,9 @@ fn inner_parse(tokens: &[Token], statements_allowed: bool) -> Result<AST, ParseE
     }
 
     match bracket_stack.last() {
-        Some(Token::LParen) => return Err(ParseError::ExpectedToken(Token::RParen)),
-        Some(Token::LBrace) => return Err(ParseError::ExpectedToken(Token::RBrace)),
+        Some(token @ Token::LBrace) | Some(token @ Token::LParen) => {
+            return Err(ParseError::UnmatchedBracket((*token).clone()))
+        }
         None => (),
         _ => unreachable!(),
     };
