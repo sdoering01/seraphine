@@ -78,6 +78,7 @@ pub fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
                 }
                 Token::Identifier(ident)
             }
+            // TODO: Account for \r\n
             '\n' => Token::Newline,
             c if c.is_ascii_whitespace() => continue,
             c => return Err(TokenizeError::UnexpectedChar(c)),
