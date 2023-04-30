@@ -1,7 +1,14 @@
 use crate::error::TokenizeError;
 
 #[derive(Debug, Clone)]
+pub enum Keyword {
+    Fn,
+    If,
+}
+
+#[derive(Debug, Clone)]
 pub enum Token {
+    Keyword(Keyword),
     Identifier(String),
     Number(String),
     Plus,
@@ -76,7 +83,12 @@ pub fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
                         _ => break,
                     }
                 }
-                Token::Identifier(ident)
+
+                match ident.as_str() {
+                    "fn" => Token::Keyword(Keyword::Fn),
+                    "if" => Token::Keyword(Keyword::If),
+                    _ => Token::Identifier(ident),
+                }
             }
             // TODO: Account for \r\n
             '\n' => Token::Newline,

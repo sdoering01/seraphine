@@ -1,4 +1,4 @@
-use crate::{error::ParseError, tokenizer::Token};
+use crate::{error::ParseError, tokenizer::{Token, Keyword}};
 
 #[derive(Debug, Clone)]
 pub enum AST {
@@ -147,7 +147,7 @@ fn inner_parse(tokens: &[Token], statements_allowed: bool) -> Result<AST, ParseE
 
     // TODO: Implement utility functions to not repeat certain patterns over and over
     match tokens[0] {
-        ref token @ Token::Identifier(ref ident) if ident == "if" => {
+        ref token @ Token::Keyword(Keyword::If) => {
             // if ( <expr> ) { <body> }
             if !statements_allowed {
                 return Err(ParseError::UnexpectedToken(token.clone()));
@@ -182,7 +182,7 @@ fn inner_parse(tokens: &[Token], statements_allowed: bool) -> Result<AST, ParseE
                 body: Box::new(body),
             });
         }
-        ref token @ Token::Identifier(ref ident) if ident == "fn" => {
+        ref token @ Token::Keyword(Keyword::Fn) => {
             // fn <name> (<arg1>, <arg2>, ...) { <body> }
             if !statements_allowed {
                 return Err(ParseError::UnexpectedToken(token.clone()));
