@@ -21,6 +21,10 @@ pub enum AST {
         arg_names: Vec<String>,
         body: Box<AST>,
     },
+    IfStatement {
+        condition: Box<AST>,
+        body: Box<AST>,
+    },
 }
 
 pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
@@ -141,9 +145,49 @@ fn inner_parse(tokens: &[Token], statements_allowed: bool) -> Result<AST, ParseE
         return Ok(AST::Lines(line_asts));
     }
 
+    // TODO: Implement utility functions to not repeat certain patterns over and over
     match tokens[0] {
-        Token::Identifier(ref ident) if ident == "fn" => {
+        ref token @ Token::Identifier(ref ident) if ident == "if" => {
+            // if ( <expr> ) { <body> }
+            if !statements_allowed {
+                return Err(ParseError::UnexpectedToken(token.clone()));
+            }
+
+            if first_lparen_idx != Some(1) {
+                return Err(ParseError::ExpectedToken(Token::LBrace));
+            }
+
+            let condition = inner_parse(
+                &tokens[first_lparen_idx.unwrap() + 1..last_rparen_idx.unwrap()],
+                false,
+            )?;
+
+            if first_lbrace_idx != Some(last_rparen_idx.unwrap() + 1) {
+                return Err(ParseError::ExpectedToken(Token::LBrace));
+            }
+
+            if last_rbrace_idx.unwrap() != tokens.len() - 1 {
+                return Err(ParseError::UnexpectedToken(
+                    tokens[last_rbrace_idx.unwrap() + 1].clone(),
+                ));
+            }
+
+            let body = inner_parse(
+                &tokens[first_lbrace_idx.unwrap() + 1..last_rbrace_idx.unwrap()],
+                true,
+            )?;
+
+            return Ok(AST::IfStatement {
+                condition: Box::new(condition),
+                body: Box::new(body),
+            });
+        }
+        ref token @ Token::Identifier(ref ident) if ident == "fn" => {
             // fn <name> (<arg1>, <arg2>, ...) { <body> }
+            if !statements_allowed {
+                return Err(ParseError::UnexpectedToken(token.clone()));
+            }
+
             let Some(Token::Identifier(name)) = tokens.get(1).cloned() else {
                 return Err(ParseError::ExpectedIdentifier);
             };

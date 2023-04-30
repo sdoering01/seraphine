@@ -348,6 +348,13 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
                 .collect::<Result<_, _>>()?;
             func.call(ctx, &args)?
         }
+        AST::IfStatement { condition, body } => {
+            let condition = evaluate(condition, ctx)?;
+            if condition != 0.0 {
+                evaluate(body, ctx)?;
+            }
+            0.0
+        }
     };
 
     if !result.is_finite() {
