@@ -319,7 +319,6 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
             let rval = evaluate(rhs, ctx)?;
             lval.powf(rval)
         }
-        AST::UnaryPlus(rhs) => evaluate(rhs, ctx)?,
         AST::UnaryMinus(rhs) => -evaluate(rhs, ctx)?,
         AST::Brackets(inner) => evaluate(inner, ctx)?,
         AST::Assign(name, rhs) => {

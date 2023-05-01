@@ -1,12 +1,12 @@
 use crate::error::TokenizeError;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Keyword {
     Fn,
     If,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
     Keyword(Keyword),
     Identifier(String),
