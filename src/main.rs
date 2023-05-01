@@ -1,11 +1,11 @@
-use std::io::{self, Write};
+use std::io;
 
 mod error;
 mod eval;
 mod parser;
 mod tokenizer;
 
-use error::{CalcError, ParseError};
+use error::CalcError;
 use eval::{evaluate, Context, Number};
 use parser::parse;
 use tokenizer::tokenize;
@@ -26,8 +26,9 @@ fn eval_file(path: &str) -> Result<(), CalcError> {
 }
 
 fn repl() {
+    // TODO: Implement proper multi-line support
     let mut ctx = Context::new();
-    let stdout = io::stdout();
+    let _stdout = io::stdout();
     let mut input = String::new();
 
     loop {
@@ -44,11 +45,12 @@ fn repl() {
                         println!("{}", result);
                         input.clear();
                     }
-                    Err(CalcError::ParseError(ParseError::UnmatchedBracket(_))) => {
-                        input.push('\n');
-                        print!("> ");
-                        stdout.lock().flush().expect("Failed to flush stdout");
-                    }
+                    // Artifact from previous band aid multi-line support
+                    // input incomplete => {
+                    //     input.push('\n');
+                    //     print!("> ");
+                    //     stdout.lock().flush().expect("Failed to flush stdout");
+                    // }
                     Err(err) => {
                         eprintln!("{}", err);
                         input.clear();
