@@ -97,7 +97,10 @@ pub enum EvalError {
         expected: usize,
         got: usize,
     },
-    DuplicateArgName{ func_name: String, arg_name: String },
+    DuplicateArgName {
+        func_name: String,
+        arg_name: String,
+    },
     CallStackOverflow,
 }
 
@@ -121,7 +124,14 @@ impl Display for EvalError {
                 "Function '{}' was called with {} arguments but expects {}",
                 name, got, expected
             ),
-            DuplicateArgName{ func_name, arg_name } => write!(f, "Function '{}' has duplicate argument name '{}'", func_name, arg_name),
+            DuplicateArgName {
+                func_name,
+                arg_name,
+            } => write!(
+                f,
+                "Function '{}' has duplicate argument name '{}'",
+                func_name, arg_name
+            ),
             CallStackOverflow => write!(f, "Call stack overflow (too many nested function calls)"),
         }
     }
