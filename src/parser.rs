@@ -1,6 +1,6 @@
 use crate::{
     error::ParseError,
-    tokenizer::{Keyword, Token},
+    tokenizer::{Keyword, Token, Operator},
 };
 
 #[derive(Debug, Clone)]
@@ -35,29 +35,27 @@ pub enum AST {
 /// precedence than addition).
 /// `is_binary` provides information about the operator being used as a
 /// unary or binary operator (i.e. if `is_binary` is false, the operator is unary).
-fn op_precedence(op: &Token, is_binary: bool) -> u8 {
-    // TODO: Implement separate token variant for operators to circumvent panics in `match`es
+fn op_precedence(op: Operator, is_binary: bool) -> u8 {
     match (op, is_binary) {
-        (Token::Plus | Token::Minus, true) => 1,
-        (Token::Star | Token::Slash | Token::Percent, true) => 2,
-        (Token::Caret, true) => 3,
-        (Token::Minus, false) => 4,
+        (Operator::Plus | Operator::Minus, true) => 1,
+        (Operator::Star | Operator::Slash | Operator::Percent, true) => 2,
+        (Operator::Caret, true) => 3,
+        (Operator::Minus, false) => 4,
         _ => {
             let op_kind = if is_binary { "binary" } else { "unary" };
-            panic!("Token '{:?}' cannot be used as {} operator", op, op_kind);
+            panic!("'{:?}' cannot be used as a {} operator", op, op_kind);
         }
     }
 }
 
-fn combine_lhs_rhs(op: Token, lhs: AST, rhs: AST) -> Result<AST, ParseError> {
+fn combine_lhs_rhs(op: Operator, lhs: AST, rhs: AST) -> Result<AST, ParseError> {
     let combined = match op {
-        Token::Plus => AST::Add(Box::new(lhs), Box::new(rhs)),
-        Token::Minus => AST::Subtract(Box::new(lhs), Box::new(rhs)),
-        Token::Star => AST::Multiply(Box::new(lhs), Box::new(rhs)),
-        Token::Slash => AST::Divide(Box::new(lhs), Box::new(rhs)),
-        Token::Percent => AST::Modulo(Box::new(lhs), Box::new(rhs)),
-        Token::Caret => AST::Power(Box::new(lhs), Box::new(rhs)),
-        token => return Err(ParseError::UnexpectedToken(token.clone())),
+        Operator::Plus => AST::Add(Box::new(lhs), Box::new(rhs)),
+        Operator::Minus => AST::Subtract(Box::new(lhs), Box::new(rhs)),
+        Operator::Star => AST::Multiply(Box::new(lhs), Box::new(rhs)),
+        Operator::Slash => AST::Divide(Box::new(lhs), Box::new(rhs)),
+        Operator::Percent => AST::Modulo(Box::new(lhs), Box::new(rhs)),
+        Operator::Caret => AST::Power(Box::new(lhs), Box::new(rhs)),
     };
     Ok(combined)
 }
@@ -136,20 +134,10 @@ impl<'a> Parser<'a> {
     /// determined by the other function.
     fn parse_expression(&mut self) -> Result<AST, ParseError> {
         let mut lhs = self.parse_expression_with_min_precedence(0)?;
-        while let Some(
-            op @ Token::Plus
-            | op @ Token::Minus
-            | op @ Token::Star
-            | op @ Token::Slash
-            | op @ Token::Percent
-            | op @ Token::Caret,
-        ) = self.peek()
-        {
-            // TODO: Could remove this, when the operator variant of token is implemented.
-            // This operator enum could implement Copy.
-            let op = op.clone();
+        while let Some(Token::Operator(op)) = self.peek() {
+            let op = *op;
             self.next();
-            let precedence = op_precedence(&op, true);
+            let precedence = op_precedence(op, true);
             let rhs = self.parse_expression_with_min_precedence(precedence + 1)?;
             lhs = combine_lhs_rhs(op, lhs, rhs)?;
         }
@@ -180,9 +168,9 @@ impl<'a> Parser<'a> {
         min_precedence: u8,
     ) -> Result<AST, ParseError> {
         match self.peek() {
-            Some(Token::Minus) => {
+            Some(Token::Operator(Operator::Minus)) => {
                 self.next();
-                let unary_minus_precedence = op_precedence(&Token::Minus, false);
+                let unary_minus_precedence = op_precedence(Operator::Minus, false);
                 // Not `+ 1` like in the other cases so we can take multiple unary minus operators
                 // after each other
                 let rhs = self.parse_expression_with_min_precedence(unary_minus_precedence)?;
@@ -200,15 +188,8 @@ impl<'a> Parser<'a> {
                 } else {
                     let lhs = self.parse_identifier_or_value()?;
                     match self.peek() {
-                        Some(
-                            op @ Token::Plus
-                            | op @ Token::Minus
-                            | op @ Token::Star
-                            | op @ Token::Slash
-                            | op @ Token::Percent
-                            | op @ Token::Caret,
-                        ) => {
-                            let precedence = op_precedence(op, true);
+                        Some(Token::Operator(op)) => {
+                            let precedence = op_precedence(*op, true);
                             if precedence >= min_precedence {
                                 let op = op.clone();
                                 self.next();

@@ -6,17 +6,22 @@ pub enum Keyword {
     If,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Token {
-    Keyword(Keyword),
-    Identifier(String),
-    Number(String),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Operator {
     Plus,
     Minus,
     Star,
     Slash,
     Percent,
     Caret,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Token {
+    Keyword(Keyword),
+    Identifier(String),
+    Number(String),
+    Operator(Operator),
     Comma,
     LParen,
     RParen,
@@ -33,17 +38,17 @@ pub fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
 
     while let Some(c) = chars.next() {
         let token = match c {
-            '+' => Token::Plus,
-            '-' => Token::Minus,
-            '*' => Token::Star,
-            '/' => Token::Slash,
-            '^' => Token::Caret,
+            '+' => Token::Operator(Operator::Plus),
+            '-' => Token::Operator(Operator::Minus),
+            '*' => Token::Operator(Operator::Star),
+            '/' => Token::Operator(Operator::Slash),
+            '^' => Token::Operator(Operator::Caret),
+            '%' => Token::Operator(Operator::Percent),
             ',' => Token::Comma,
             '(' => Token::LParen,
             ')' => Token::RParen,
             '{' => Token::LBrace,
             '}' => Token::RBrace,
-            '%' => Token::Percent,
             '=' => Token::Equal,
             c @ ('0'..='9' | '.') => {
                 let mut has_dot = c == '.';
