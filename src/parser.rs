@@ -25,7 +25,8 @@ pub enum AST {
     },
     IfStatement {
         condition: Box<AST>,
-        body: Box<AST>,
+        if_body: Box<AST>,
+        else_body: Option<Box<AST>>,
     },
 }
 
@@ -275,20 +276,43 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_if_statement(&mut self) -> Result<AST, ParseError> {
-        // if ( <expr> ) { <body> }
+        // if ( <expr> ) { <body> } [ else { <body> } ]
         self.expect(Token::Keyword(Keyword::If))?;
         self.expect(Token::LParen)?;
         let condition = self.parse_expression()?;
         self.expect(Token::RParen)?;
         self.skip_newlines();
         self.expect(Token::LBrace)?;
-        let body = self.parse_block()?;
+        let if_body = self.parse_block()?;
         self.skip_newlines();
         self.expect(Token::RBrace)?;
 
+        // TODO: Add support for `else if`
+
+        // We can't just skip newlines unconditionally here, since a newline is required after the
+        // if statement and there may not be an else
+        let mut peek_idx = 1;
+        while let Some(Token::Newline) = self.peek_nth(peek_idx) {
+            peek_idx += 1;
+        }
+
+        let else_body = if self.peek_nth(peek_idx) == Some(&Token::Keyword(Keyword::Else)) {
+            self.skip_newlines();
+            self.next();
+            self.skip_newlines();
+            self.expect(Token::LBrace)?;
+            let else_body = self.parse_block()?;
+            self.skip_newlines();
+            self.expect(Token::RBrace)?;
+            Some(Box::new(else_body))
+        } else {
+            None
+        };
+
         Ok(AST::IfStatement {
             condition: Box::new(condition),
-            body: Box::new(body),
+            if_body: Box::new(if_body),
+            else_body,
         })
     }
 

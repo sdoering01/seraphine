@@ -347,10 +347,12 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
                 .collect::<Result<_, _>>()?;
             func.call(ctx, &args)?
         }
-        AST::IfStatement { condition, body } => {
+        AST::IfStatement { condition, if_body, else_body } => {
             let condition = evaluate(condition, ctx)?;
             if condition != 0.0 {
-                evaluate(body, ctx)?;
+                evaluate(if_body, ctx)?;
+            } else if let Some(else_body) = else_body {
+                evaluate(else_body, ctx)?;
             }
             0.0
         }

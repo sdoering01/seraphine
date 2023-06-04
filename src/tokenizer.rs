@@ -4,6 +4,7 @@ use crate::error::TokenizeError;
 pub enum Keyword {
     Fn,
     If,
+    Else,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +93,7 @@ pub fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
                 match ident.as_str() {
                     "fn" => Token::Keyword(Keyword::Fn),
                     "if" => Token::Keyword(Keyword::If),
+                    "else" => Token::Keyword(Keyword::Else),
                     _ => Token::Identifier(ident),
                 }
             }

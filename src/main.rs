@@ -297,6 +297,45 @@ mod tests {
     }
 
     #[test]
+    fn test_if_statements() {
+        let code = "\
+            a = 0
+            if (0) {
+                a = 2
+            }
+            a";
+        assert_eq!(eval_str(code).unwrap(), 0.0);
+
+        let code = "\
+            a = 0
+            if (1) {
+                a = 2
+            }
+            a";
+        assert_eq!(eval_str(code).unwrap(), 2.0);
+
+        let code = "\
+            a = 0
+            if (0) {
+                a = 2
+            } else {
+                a = 3
+            }
+            a";
+        assert_eq!(eval_str(code).unwrap(), 3.0);
+
+        let code = "\
+            a = 0
+            if (1) {
+                a = 2
+            } else {
+                a = 3
+            }
+            a";
+        assert_eq!(eval_str(code).unwrap(), 2.0);
+    }
+
+    #[test]
     fn test_errors_on_missing_newline() {
         assert!(eval_str("1 + 1 2 + 2").is_err());
         assert!(eval_str("1 2").is_err());
