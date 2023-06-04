@@ -94,7 +94,9 @@ impl<'a> Parser<'a> {
 
     fn parse_block(&mut self) -> Result<AST, ParseError> {
         let mut lines = Vec::new();
+        let mut parsed_expression_last_iteration = false;
         while let Some(token) = self.peek() {
+            let mut parsed_expression_this_iteration = false;
             // TODO: Remove Option from AST::Lines, when this parser works
             let line = match token {
                 Token::Newline => {
@@ -107,9 +109,17 @@ impl<'a> Parser<'a> {
                 Token::Identifier(_) if self.peek_nth(2) == Some(&Token::Equal) => {
                     Some(self.parse_assignment()?)
                 }
-                _ => Some(self.parse_expression()?),
+                _ => {
+                    if parsed_expression_last_iteration {
+                        return Err(ParseError::UnexpectedToken(token.clone()));
+                    } else {
+                        parsed_expression_this_iteration = true;
+                        Some(self.parse_expression()?)
+                    }
+                },
             };
             lines.push(line);
+            parsed_expression_last_iteration = parsed_expression_this_iteration;
         }
         Ok(AST::Lines(lines))
     }

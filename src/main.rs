@@ -295,4 +295,11 @@ mod tests {
         assert!(eval_str("fn contains_expression(a, b, 1 + 1) { a + b }").is_err());
         assert!(eval_str("fn duplicate_arg_name(a, a) { a + a }").is_err());
     }
+
+    #[test]
+    fn test_multiple_expressions_in_single_line() {
+        assert!(eval_str("1 + 1 2 + 2").is_err());
+        assert!(eval_str("1 2").is_err());
+        assert!(eval_str("(1 * 3) 2").is_err());
+    }
 }
