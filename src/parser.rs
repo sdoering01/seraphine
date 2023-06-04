@@ -5,7 +5,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum AST {
-    Lines(Vec<Option<AST>>),
+    Lines(Vec<AST>),
     Number(String),
     Variable(String),
     Add(Box<AST>, Box<AST>),
@@ -97,7 +97,6 @@ impl<'a> Parser<'a> {
         let mut parsed_expression_last_iteration = false;
         while let Some(token) = self.peek() {
             let mut parsed_expression_this_iteration = false;
-            // TODO: Remove Option from AST::Lines, when this parser works
             let line = match token {
                 Token::Newline => {
                     self.next();
@@ -118,7 +117,11 @@ impl<'a> Parser<'a> {
                     }
                 },
             };
-            lines.push(line);
+
+            if let Some(token) = line {
+                lines.push(token);
+            }
+
             parsed_expression_last_iteration = parsed_expression_this_iteration;
         }
         Ok(AST::Lines(lines))

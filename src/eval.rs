@@ -286,7 +286,7 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
         }
         AST::Lines(lines) => {
             let mut result = 0.0;
-            for line in lines.into_iter().flatten() {
+            for line in lines.into_iter() {
                 result = evaluate(line, ctx)?;
             }
             result
