@@ -297,9 +297,12 @@ mod tests {
     }
 
     #[test]
-    fn test_multiple_expressions_in_single_line() {
+    fn test_errors_on_missing_newline() {
         assert!(eval_str("1 + 1 2 + 2").is_err());
         assert!(eval_str("1 2").is_err());
         assert!(eval_str("(1 * 3) 2").is_err());
+
+        assert!(eval_str("fn add(a, b) { a + b } fn sub(a, b) { a - b }").is_err());
+        assert!(eval_str("if (1){ 1 } if (2){ 2 }").is_err());
     }
 }

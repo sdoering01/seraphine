@@ -1,6 +1,6 @@
 use crate::{
     error::ParseError,
-    tokenizer::{Keyword, Token, Operator},
+    tokenizer::{Keyword, Operator, Token},
 };
 
 #[derive(Debug, Clone)]
@@ -92,35 +92,31 @@ impl<'a> Parser<'a> {
 
     fn parse_block(&mut self) -> Result<AST, ParseError> {
         let mut lines = Vec::new();
-        let mut parsed_expression_last_iteration = false;
+        let mut want_newline_this_iteration = false;
         while let Some(token) = self.peek() {
-            let mut parsed_expression_this_iteration = false;
-            let line = match token {
+            let (line, want_newline_next_iteration) = match token {
                 Token::Newline => {
                     self.next();
-                    None
+                    (None, false)
                 }
                 Token::RBrace => break,
-                Token::Keyword(Keyword::Fn) => Some(self.parse_function_definition()?),
-                Token::Keyword(Keyword::If) => Some(self.parse_if_statement()?),
-                Token::Identifier(_) if self.peek_nth(2) == Some(&Token::Equal) => {
-                    Some(self.parse_assignment()?)
+                // All following constructs can only appear at the beginning of a line
+                _ if want_newline_this_iteration => {
+                    return Err(ParseError::ExpectedToken(Token::Newline));
                 }
-                _ => {
-                    if parsed_expression_last_iteration {
-                        return Err(ParseError::UnexpectedToken(token.clone()));
-                    } else {
-                        parsed_expression_this_iteration = true;
-                        Some(self.parse_expression()?)
-                    }
-                },
+                Token::Keyword(Keyword::Fn) => (Some(self.parse_function_definition()?), true),
+                Token::Keyword(Keyword::If) => (Some(self.parse_if_statement()?), true),
+                Token::Identifier(_) if self.peek_nth(2) == Some(&Token::Equal) => {
+                    (Some(self.parse_assignment()?), true)
+                }
+                _ => (Some(self.parse_expression()?), true),
             };
 
             if let Some(token) = line {
                 lines.push(token);
             }
 
-            parsed_expression_last_iteration = parsed_expression_this_iteration;
+            want_newline_this_iteration = want_newline_next_iteration;
         }
         Ok(AST::Lines(lines))
     }
@@ -141,7 +137,6 @@ impl<'a> Parser<'a> {
             let rhs = self.parse_expression_with_min_precedence(precedence + 1)?;
             lhs = combine_lhs_rhs(op, lhs, rhs)?;
         }
-        self.skip_newlines();
         Ok(lhs)
     }
 
