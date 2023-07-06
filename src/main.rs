@@ -408,6 +408,19 @@ mod tests {
     }
 
     #[test]
+    fn test_while_loop() {
+        let code = "\
+            a = 0
+            while (0) {
+                a = 1
+            }
+            a";
+        assert_eq!(eval_str(code).unwrap(), 0.0);
+
+        // TODO: Add tests when comparison operators are implemented
+    }
+
+    #[test]
     fn test_errors_on_missing_newline() {
         assert!(eval_str("1 + 1 2 + 2").is_err());
         assert!(eval_str("1 2").is_err());
