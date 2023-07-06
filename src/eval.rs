@@ -377,6 +377,12 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
             }
             0.0
         }
+        AST::WhileLoop { condition, body } => {
+            while evaluate(condition, ctx)? != 0.0 {
+                evaluate(body, ctx)?;
+            }
+            0.0
+        }
     };
 
     if !result.is_finite() {

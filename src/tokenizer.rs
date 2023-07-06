@@ -5,6 +5,7 @@ pub enum Keyword {
     Fn,
     If,
     Else,
+    While,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,6 +140,7 @@ pub fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
                     "fn" => Token::Keyword(Keyword::Fn),
                     "if" => Token::Keyword(Keyword::If),
                     "else" => Token::Keyword(Keyword::Else),
+                    "while" => Token::Keyword(Keyword::While),
                     _ => Token::Identifier(ident),
                 }
             }

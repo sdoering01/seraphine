@@ -35,6 +35,10 @@ pub enum AST {
         if_body: Box<AST>,
         else_body: Option<Box<AST>>,
     },
+    WhileLoop {
+        condition: Box<AST>,
+        body: Box<AST>,
+    },
 }
 
 /// Returns the precedence of the operator.
@@ -136,6 +140,7 @@ impl<'a> Parser<'a> {
                 }
                 Token::Keyword(Keyword::Fn) => (Some(self.parse_function_definition()?), true),
                 Token::Keyword(Keyword::If) => (Some(self.parse_if_statement()?), true),
+                Token::Keyword(Keyword::While) => (Some(self.parse_while_loop()?), true),
                 Token::Identifier(_) if self.peek_nth(2) == Some(&Token::Equal) => {
                     (Some(self.parse_assignment()?), true)
                 }
@@ -347,6 +352,24 @@ impl<'a> Parser<'a> {
             condition: Box::new(condition),
             if_body: Box::new(if_body),
             else_body,
+        })
+    }
+
+    fn parse_while_loop(&mut self) -> Result<AST, ParseError> {
+        // while ( <expr> ) { <body> }
+        self.expect(Token::Keyword(Keyword::While))?;
+        self.expect(Token::LParen)?;
+        let condition = self.parse_expression()?;
+        self.expect(Token::RParen)?;
+        self.skip_newlines();
+
+        self.expect(Token::LBrace)?;
+        let body = self.parse_block()?;
+        self.expect(Token::RBrace)?;
+
+        Ok(AST::WhileLoop {
+            condition: Box::new(condition),
+            body: Box::new(body),
         })
     }
 

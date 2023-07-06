@@ -489,6 +489,25 @@ mod tests {
     }
 
     #[test]
+    fn test_while_loop() {
+        let code = "\
+            a = 0
+            while (0) {
+                a = 1
+            }
+            a";
+        assert_eq!(eval_str(code).unwrap(), 0.0);
+
+        let code = "\
+            a = 0
+            while (2 * a < 10) {
+                a = a + 1
+            }
+            a";
+        assert_eq!(eval_str(code).unwrap(), 5.0);
+    }
+
+    #[test]
     fn test_errors_on_missing_newline() {
         assert!(eval_str("1 + 1 2 + 2").is_err());
         assert!(eval_str("1 2").is_err());
