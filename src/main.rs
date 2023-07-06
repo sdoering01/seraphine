@@ -333,6 +333,78 @@ mod tests {
             }
             a";
         assert_eq!(eval_str(code).unwrap(), 2.0);
+
+        let code = "\
+            a = 0
+            if (0) {
+                a = 2
+            } else if (0) {
+                a = 3
+            }
+            a";
+        assert_eq!(eval_str(code).unwrap(), 0.0);
+
+        let code = "\
+            a = 0
+            if (0) {
+                a = 2
+            } else if (0) {
+                a = 3
+            } else {
+                a = 4
+            }
+            a";
+        assert_eq!(eval_str(code).unwrap(), 4.0);
+
+        let code = "\
+            a = 0
+            if (1) {
+                a = 2
+            } else if (0) {
+                a = 3
+            } else {
+                a = 4
+            }
+            a";
+        assert_eq!(eval_str(code).unwrap(), 2.0);
+
+        let code = "\
+            a = 0
+            if (1) {
+                a = 2
+            } else if (1) {
+                a = 3
+            } else {
+                a = 4
+            }
+            a";
+        assert_eq!(eval_str(code).unwrap(), 2.0);
+
+        let code = "\
+            a = 0
+            if (0) {
+                a = 2
+            } else if (1) {
+                a = 3
+            } else {
+                a = 4
+            }
+            a";
+        assert_eq!(eval_str(code).unwrap(), 3.0);
+
+        let code = "\
+            a = 0
+            if (0) {
+                a = 2
+            } else if (0) {
+                a = 3
+            } else if (1) {
+                a = 4
+            } else {
+                a = 5
+            }
+            a";
+        assert_eq!(eval_str(code).unwrap(), 4.0);
     }
 
     #[test]

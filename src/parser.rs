@@ -276,7 +276,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_if_statement(&mut self) -> Result<AST, ParseError> {
-        // if ( <expr> ) { <body> } [ else { <body> } ]
+        // if ( <expr> ) { <body> } [ else if ( <expr> ) { <body> } [ ... ] ] [ else { <body> } ]
         self.expect(Token::Keyword(Keyword::If))?;
         self.expect(Token::LParen)?;
         let condition = self.parse_expression()?;
@@ -287,24 +287,20 @@ impl<'a> Parser<'a> {
         self.skip_newlines();
         self.expect(Token::RBrace)?;
 
-        // TODO: Add support for `else if`
-
-        // We can't just skip newlines unconditionally here, since a newline is required after the
-        // if statement and there may not be an else
-        let mut peek_idx = 1;
-        while let Some(Token::Newline) = self.peek_nth(peek_idx) {
-            peek_idx += 1;
-        }
-
-        let else_body = if self.peek_nth(peek_idx) == Some(&Token::Keyword(Keyword::Else)) {
+        let else_body = if self.peek_next_non_newline() == Some(&Token::Keyword(Keyword::Else)) {
             self.skip_newlines();
             self.next();
-            self.skip_newlines();
-            self.expect(Token::LBrace)?;
-            let else_body = self.parse_block()?;
-            self.skip_newlines();
-            self.expect(Token::RBrace)?;
-            Some(Box::new(else_body))
+            if self.peek() == Some(&Token::Keyword(Keyword::If)) {
+                let else_if_statement = self.parse_if_statement()?;
+                Some(Box::new(else_if_statement))
+            } else {
+                self.skip_newlines();
+                self.expect(Token::LBrace)?;
+                let else_body = self.parse_block()?;
+                self.skip_newlines();
+                self.expect(Token::RBrace)?;
+                Some(Box::new(else_body))
+            }
         } else {
             None
         };
@@ -333,6 +329,19 @@ impl<'a> Parser<'a> {
     /// Peeks the next token, behaving like `peek` of an iterator.
     fn peek(&self) -> Option<&Token> {
         self.peek_nth(1)
+    }
+
+    /// Peeks the next token that isn't a newline.
+    ///
+    /// [`Self::skip_newlines`] and [`Self::next`] can be used to advance the position to the next non-newline
+    /// token.
+    fn peek_next_non_newline(&self) -> Option<&Token> {
+        let mut peek_idx = 1;
+        while let Some(Token::Newline) = self.peek_nth(peek_idx) {
+            peek_idx += 1;
+        }
+
+        self.peek_nth(peek_idx)
     }
 
     /// Asserts that `expected` is the next token, while also advancing the position.
