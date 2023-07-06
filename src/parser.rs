@@ -22,6 +22,8 @@ pub enum AST {
     GreaterThan(Box<AST>, Box<AST>),
     LessThanOrEqual(Box<AST>, Box<AST>),
     GreaterThanOrEqual(Box<AST>, Box<AST>),
+    And(Box<AST>, Box<AST>),
+    Or(Box<AST>, Box<AST>),
     Brackets(Box<AST>),
     Assign(String, Box<AST>),
     FunctionCall(String, Vec<AST>),
@@ -49,6 +51,8 @@ pub enum AST {
 /// unary or binary operator (i.e. if `is_binary` is false, the operator is unary).
 fn op_precedence(op: Operator, is_binary: bool) -> Result<u8, ParseError> {
     let precedence = match (op, is_binary) {
+        (Operator::Or, true) => 1,
+        (Operator::And, true) => 2,
         (
             Operator::Equal
             | Operator::Unequal
@@ -57,11 +61,11 @@ fn op_precedence(op: Operator, is_binary: bool) -> Result<u8, ParseError> {
             | Operator::LessThanOrEqual
             | Operator::GreaterThanOrEqual,
             true,
-        ) => 1,
-        (Operator::Plus | Operator::Minus, true) => 2,
-        (Operator::Star | Operator::Slash | Operator::Percent, true) => 3,
-        (Operator::Caret, true) => 4,
-        (Operator::Minus | Operator::Exclamation, false) => 5,
+        ) => 3,
+        (Operator::Plus | Operator::Minus, true) => 4,
+        (Operator::Star | Operator::Slash | Operator::Percent, true) => 5,
+        (Operator::Caret, true) => 6,
+        (Operator::Minus | Operator::Exclamation, false) => 7,
         _ => {
             let kind = if is_binary {
                 OperatorKind::Binary
@@ -89,6 +93,8 @@ fn combine_lhs_rhs(op: Operator, lhs: AST, rhs: AST) -> Result<AST, ParseError> 
         Operator::GreaterThan => AST::GreaterThan(Box::new(lhs), Box::new(rhs)),
         Operator::LessThanOrEqual => AST::LessThanOrEqual(Box::new(lhs), Box::new(rhs)),
         Operator::GreaterThanOrEqual => AST::GreaterThanOrEqual(Box::new(lhs), Box::new(rhs)),
+        Operator::And => AST::And(Box::new(lhs), Box::new(rhs)),
+        Operator::Or => AST::Or(Box::new(lhs), Box::new(rhs)),
         Operator::Exclamation => unreachable!(),
     };
     Ok(combined)

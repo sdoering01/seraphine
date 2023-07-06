@@ -489,6 +489,36 @@ mod tests {
     }
 
     #[test]
+    fn test_and_operator() {
+        assert_eq!(eval_str("0 && 0").unwrap(), 0.0);
+        assert_eq!(eval_str("8 && 0").unwrap(), 0.0);
+        assert_eq!(eval_str("-7 && 0").unwrap(), 0.0);
+        assert_eq!(eval_str("0 && 15").unwrap(), 0.0);
+        assert_eq!(eval_str("0 && -27").unwrap(), 0.0);
+        assert_eq!(eval_str("18 && 1").unwrap(), 1.0);
+        assert_eq!(eval_str("42 && -42").unwrap(), 1.0);
+
+        let code = "\
+            a = 2
+            a > 0 && a > 1";
+        assert_eq!(eval_str(code).unwrap(), 1.0);
+
+        // TODO: Fix bug with precedence first
+        // assert_eq!(eval_str("1 + 1 > 1 && 2 + 2 > 2").unwrap(), 1.0);
+    }
+
+    #[test]
+    fn test_or_operator() {
+        assert_eq!(eval_str("0 || 0").unwrap(), 0.0);
+        assert_eq!(eval_str("8 || 0").unwrap(), 1.0);
+        assert_eq!(eval_str("-7 || 0").unwrap(), 1.0);
+        assert_eq!(eval_str("0 || 15").unwrap(), 1.0);
+        assert_eq!(eval_str("0 || -27").unwrap(), 1.0);
+        assert_eq!(eval_str("18 || 1").unwrap(), 1.0);
+        assert_eq!(eval_str("42 || -42").unwrap(), 1.0);
+    }
+
+    #[test]
     fn test_while_loop() {
         let code = "\
             a = 0

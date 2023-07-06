@@ -36,6 +36,10 @@ pub enum Operator {
     LessThanOrEqual,
     /// `>=`
     GreaterThanOrEqual,
+    /// `&&`
+    And,
+    /// `||`
+    Or,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,6 +85,14 @@ pub fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
             '>' if chars.peek() == Some(&'=') => {
                 chars.next();
                 Token::Operator(Operator::GreaterThanOrEqual)
+            }
+            '&' if chars.peek() == Some(&'&') => {
+                chars.next();
+                Token::Operator(Operator::And)
+            }
+            '|' if chars.peek() == Some(&'|') => {
+                chars.next();
+                Token::Operator(Operator::Or)
             }
             '!' => Token::Operator(Operator::Exclamation),
             '<' => Token::Operator(Operator::LessThan),

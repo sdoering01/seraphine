@@ -341,6 +341,12 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
         AST::GreaterThanOrEqual(lhs, rhs) => {
             bool_to_number(evaluate(lhs, ctx)? >= evaluate(rhs, ctx)?)
         }
+        AST::And(lhs, rhs) => {
+            bool_to_number(evaluate(lhs, ctx)? != 0.0 && evaluate(rhs, ctx)? != 0.0)
+        }
+        AST::Or(lhs, rhs) => {
+            bool_to_number(evaluate(lhs, ctx)? != 0.0 || evaluate(rhs, ctx)? != 0.0)
+        }
         AST::Brackets(inner) => evaluate(inner, ctx)?,
         AST::Assign(name, rhs) => {
             let rval = evaluate(rhs, ctx)?;
