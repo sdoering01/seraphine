@@ -408,6 +408,87 @@ mod tests {
     }
 
     #[test]
+    fn test_boolean_negate_operator() {
+        assert_eq!(eval_str("!1").unwrap(), 0.0);
+        assert_eq!(eval_str("!0.01").unwrap(), 0.0);
+        assert_eq!(eval_str("!0.00001").unwrap(), 0.0);
+        assert_eq!(eval_str("!42").unwrap(), 0.0);
+        assert_eq!(eval_str("!-42").unwrap(), 0.0);
+        assert_eq!(eval_str("!-1").unwrap(), 0.0);
+    }
+
+    #[test]
+    fn test_equality_operator() {
+        assert_eq!(eval_str("1 == 0").unwrap(), 0.0);
+        assert_eq!(eval_str("-1 == -2").unwrap(), 0.0);
+        assert_eq!(eval_str("42 == 21").unwrap(), 0.0);
+        assert_eq!(eval_str("0 == 0").unwrap(), 1.0);
+        assert_eq!(eval_str("42 == 42").unwrap(), 1.0);
+        assert_eq!(eval_str("-1 == -1").unwrap(), 1.0);
+        assert_eq!(eval_str("-0 == 0").unwrap(), 1.0);
+    }
+
+    #[test]
+    fn test_inequality_operator() {
+        assert_eq!(eval_str("1 != 0").unwrap(), 1.0);
+        assert_eq!(eval_str("-1 != -2").unwrap(), 1.0);
+        assert_eq!(eval_str("42 != 21").unwrap(), 1.0);
+        assert_eq!(eval_str("-42 != 42").unwrap(), 1.0);
+        assert_eq!(eval_str("0 != 0").unwrap(), 0.0);
+        assert_eq!(eval_str("42 != 42").unwrap(), 0.0);
+        assert_eq!(eval_str("-1 != -1").unwrap(), 0.0);
+        assert_eq!(eval_str("-0 != 0").unwrap(), 0.0);
+    }
+
+    #[test]
+    fn test_less_than_operator() {
+        assert_eq!(eval_str("0 < 1").unwrap(), 1.0);
+        assert_eq!(eval_str("-2 < -1").unwrap(), 1.0);
+        assert_eq!(eval_str("42 < 21").unwrap(), 0.0);
+        assert_eq!(eval_str("-42 < 42").unwrap(), 1.0);
+        assert_eq!(eval_str("0 < 0").unwrap(), 0.0);
+        assert_eq!(eval_str("42 < 42").unwrap(), 0.0);
+        assert_eq!(eval_str("-1 < -1").unwrap(), 0.0);
+        assert_eq!(eval_str("-0 < 0").unwrap(), 0.0);
+    }
+
+    #[test]
+    fn test_greater_than_operator() {
+        assert_eq!(eval_str("0 > 1").unwrap(), 0.0);
+        assert_eq!(eval_str("-2 > -1").unwrap(), 0.0);
+        assert_eq!(eval_str("42 > 21").unwrap(), 1.0);
+        assert_eq!(eval_str("-42 > 42").unwrap(), 0.0);
+        assert_eq!(eval_str("0 > 0").unwrap(), 0.0);
+        assert_eq!(eval_str("42 > 42").unwrap(), 0.0);
+        assert_eq!(eval_str("-1 > -1").unwrap(), 0.0);
+        assert_eq!(eval_str("-0 > 0").unwrap(), 0.0);
+    }
+
+    #[test]
+    fn test_less_than_or_equal_operator() {
+        assert_eq!(eval_str("0 <= 1").unwrap(), 1.0);
+        assert_eq!(eval_str("-2 <= -1").unwrap(), 1.0);
+        assert_eq!(eval_str("42 <= 21").unwrap(), 0.0);
+        assert_eq!(eval_str("-42 <= 42").unwrap(), 1.0);
+        assert_eq!(eval_str("0 <= 0").unwrap(), 1.0);
+        assert_eq!(eval_str("42 <= 42").unwrap(), 1.0);
+        assert_eq!(eval_str("-1 <= -1").unwrap(), 1.0);
+        assert_eq!(eval_str("-0 <= 0").unwrap(), 1.0);
+    }
+
+    #[test]
+    fn test_greater_than_or_equal_operator() {
+        assert_eq!(eval_str("0 >= 1").unwrap(), 0.0);
+        assert_eq!(eval_str("-2 >= -1").unwrap(), 0.0);
+        assert_eq!(eval_str("42 >= 21").unwrap(), 1.0);
+        assert_eq!(eval_str("-42 >= 42").unwrap(), 0.0);
+        assert_eq!(eval_str("0 >= 0").unwrap(), 1.0);
+        assert_eq!(eval_str("42 >= 42").unwrap(), 1.0);
+        assert_eq!(eval_str("-1 >= -1").unwrap(), 1.0);
+        assert_eq!(eval_str("-0 >= 0").unwrap(), 1.0);
+    }
+
+    #[test]
     fn test_errors_on_missing_newline() {
         assert!(eval_str("1 + 1 2 + 2").is_err());
         assert!(eval_str("1 2").is_err());

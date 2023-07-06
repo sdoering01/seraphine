@@ -3,7 +3,7 @@ use std::{
     io,
 };
 
-use crate::tokenizer::Token;
+use crate::tokenizer::{Operator, Token};
 
 #[derive(Debug)]
 pub enum CalcError {
@@ -64,11 +64,27 @@ impl Display for TokenizeError {
 }
 
 #[derive(Debug)]
+pub enum OperatorKind {
+    Unary,
+    Binary,
+}
+
+impl Display for OperatorKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            OperatorKind::Unary => write!(f, "unary"),
+            OperatorKind::Binary => write!(f, "binary"),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum ParseError {
     NoTokensLeft,
     UnexpectedToken(Token),
     ExpectedToken(Token),
     ExpectedIdentifier,
+    InvalidOperator(Operator, OperatorKind),
 }
 
 impl Display for ParseError {
@@ -79,6 +95,9 @@ impl Display for ParseError {
             UnexpectedToken(t) => write!(f, "Unexpected token {:?}", t),
             ExpectedToken(t) => write!(f, "Expected token {:?}", t),
             ExpectedIdentifier => write!(f, "Expected identifier"),
+            InvalidOperator(op, kind) => {
+                write!(f, "Invalid {} operator {:?}", kind.to_string(), op)
+            }
         }
     }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    error::ParseError,
+    error::{OperatorKind, ParseError},
     tokenizer::{Keyword, Operator, Token},
 };
 
@@ -15,6 +15,13 @@ pub enum AST {
     Modulo(Box<AST>, Box<AST>),
     Power(Box<AST>, Box<AST>),
     UnaryMinus(Box<AST>),
+    BooleanNegate(Box<AST>),
+    Equality(Box<AST>, Box<AST>),
+    Inequality(Box<AST>, Box<AST>),
+    LessThan(Box<AST>, Box<AST>),
+    GreaterThan(Box<AST>, Box<AST>),
+    LessThanOrEqual(Box<AST>, Box<AST>),
+    GreaterThanOrEqual(Box<AST>, Box<AST>),
     Brackets(Box<AST>),
     Assign(String, Box<AST>),
     FunctionCall(String, Vec<AST>),
@@ -36,17 +43,32 @@ pub enum AST {
 /// precedence than addition).
 /// `is_binary` provides information about the operator being used as a
 /// unary or binary operator (i.e. if `is_binary` is false, the operator is unary).
-fn op_precedence(op: Operator, is_binary: bool) -> u8 {
-    match (op, is_binary) {
-        (Operator::Plus | Operator::Minus, true) => 1,
-        (Operator::Star | Operator::Slash | Operator::Percent, true) => 2,
-        (Operator::Caret, true) => 3,
-        (Operator::Minus, false) => 4,
+fn op_precedence(op: Operator, is_binary: bool) -> Result<u8, ParseError> {
+    let precedence = match (op, is_binary) {
+        (
+            Operator::Equal
+            | Operator::Unequal
+            | Operator::LessThan
+            | Operator::GreaterThan
+            | Operator::LessThanOrEqual
+            | Operator::GreaterThanOrEqual,
+            true,
+        ) => 1,
+        (Operator::Plus | Operator::Minus, true) => 2,
+        (Operator::Star | Operator::Slash | Operator::Percent, true) => 3,
+        (Operator::Caret, true) => 4,
+        (Operator::Minus | Operator::Exclamation, false) => 5,
         _ => {
-            let op_kind = if is_binary { "binary" } else { "unary" };
-            panic!("'{:?}' cannot be used as a {} operator", op, op_kind);
+            let kind = if is_binary {
+                OperatorKind::Binary
+            } else {
+                OperatorKind::Unary
+            };
+            return Err(ParseError::InvalidOperator(op, kind));
         }
-    }
+    };
+
+    Ok(precedence)
 }
 
 fn combine_lhs_rhs(op: Operator, lhs: AST, rhs: AST) -> Result<AST, ParseError> {
@@ -57,6 +79,13 @@ fn combine_lhs_rhs(op: Operator, lhs: AST, rhs: AST) -> Result<AST, ParseError> 
         Operator::Slash => AST::Divide(Box::new(lhs), Box::new(rhs)),
         Operator::Percent => AST::Modulo(Box::new(lhs), Box::new(rhs)),
         Operator::Caret => AST::Power(Box::new(lhs), Box::new(rhs)),
+        Operator::Equal => AST::Equality(Box::new(lhs), Box::new(rhs)),
+        Operator::Unequal => AST::Inequality(Box::new(lhs), Box::new(rhs)),
+        Operator::LessThan => AST::LessThan(Box::new(lhs), Box::new(rhs)),
+        Operator::GreaterThan => AST::GreaterThan(Box::new(lhs), Box::new(rhs)),
+        Operator::LessThanOrEqual => AST::LessThanOrEqual(Box::new(lhs), Box::new(rhs)),
+        Operator::GreaterThanOrEqual => AST::GreaterThanOrEqual(Box::new(lhs), Box::new(rhs)),
+        Operator::Exclamation => unreachable!(),
     };
     Ok(combined)
 }
@@ -134,7 +163,7 @@ impl<'a> Parser<'a> {
         while let Some(Token::Operator(op)) = self.peek() {
             let op = *op;
             self.next();
-            let precedence = op_precedence(op, true);
+            let precedence = op_precedence(op, true)?;
             let rhs = self.parse_expression_with_min_precedence(precedence + 1)?;
             lhs = combine_lhs_rhs(op, lhs, rhs)?;
         }
@@ -164,13 +193,22 @@ impl<'a> Parser<'a> {
         min_precedence: u8,
     ) -> Result<AST, ParseError> {
         match self.peek() {
+            // Parse logic for unary operators could be combined if we add more of them
             Some(Token::Operator(Operator::Minus)) => {
                 self.next();
-                let unary_minus_precedence = op_precedence(Operator::Minus, false);
+                let unary_minus_precedence = op_precedence(Operator::Minus, false)?;
                 // Not `+ 1` like in the other cases so we can take multiple unary minus operators
                 // after each other
                 let rhs = self.parse_expression_with_min_precedence(unary_minus_precedence)?;
                 Ok(AST::UnaryMinus(Box::new(rhs)))
+            }
+            Some(Token::Operator(Operator::Exclamation)) => {
+                self.next();
+                let boolean_negate_precedence = op_precedence(Operator::Exclamation, false)?;
+                // Not `+ 1` like in the other cases so we can take multiple boolean negate operators
+                // after each other
+                let rhs = self.parse_expression_with_min_precedence(boolean_negate_precedence)?;
+                Ok(AST::BooleanNegate(Box::new(rhs)))
             }
             Some(Token::LParen) => {
                 self.next();
@@ -185,7 +223,7 @@ impl<'a> Parser<'a> {
                     let lhs = self.parse_identifier_or_value()?;
                     match self.peek() {
                         Some(Token::Operator(op)) => {
-                            let precedence = op_precedence(*op, true);
+                            let precedence = op_precedence(*op, true)?;
                             if precedence >= min_precedence {
                                 let op = op.clone();
                                 self.next();

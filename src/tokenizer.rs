@@ -9,12 +9,32 @@ pub enum Keyword {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operator {
+    /// `+`
     Plus,
+    /// `-`
     Minus,
+    /// `*`
     Star,
+    /// `/`
     Slash,
+    /// `%`
     Percent,
+    /// `^`
     Caret,
+    /// `!`
+    Exclamation,
+    /// `==`
+    Equal,
+    /// `!=`
+    Unequal,
+    /// `<`
+    LessThan,
+    /// `>`
+    GreaterThan,
+    /// `<=`
+    LessThanOrEqual,
+    /// `>=`
+    GreaterThanOrEqual,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,11 +43,17 @@ pub enum Token {
     Identifier(String),
     Number(String),
     Operator(Operator),
-    Comma,
+    /// `,`
+    Comma, 
+    /// `(`
     LParen,
+    /// `)`
     RParen,
+    /// `{`
     LBrace,
+    /// `}`
     RBrace,
+    /// `=`
     Equal,
     Newline,
 }
@@ -39,6 +65,25 @@ pub fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
 
     while let Some(c) = chars.next() {
         let token = match c {
+            '!' if chars.peek() == Some(&'=') => {
+                chars.next();
+                Token::Operator(Operator::Unequal)
+            }
+            '=' if chars.peek() == Some(&'=') => {
+                chars.next();
+                Token::Operator(Operator::Equal)
+            }
+            '<' if chars.peek() == Some(&'=') => {
+                chars.next();
+                Token::Operator(Operator::LessThanOrEqual)
+            }
+            '>' if chars.peek() == Some(&'=') => {
+                chars.next();
+                Token::Operator(Operator::GreaterThanOrEqual)
+            }
+            '!' => Token::Operator(Operator::Exclamation),
+            '<' => Token::Operator(Operator::LessThan),
+            '>' => Token::Operator(Operator::GreaterThan),
             '+' => Token::Operator(Operator::Plus),
             '-' => Token::Operator(Operator::Minus),
             '*' => Token::Operator(Operator::Star),

@@ -320,6 +320,27 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
             lval.powf(rval)
         }
         AST::UnaryMinus(rhs) => -evaluate(rhs, ctx)?,
+        AST::BooleanNegate(rhs) => {
+            bool_to_number(evaluate(rhs, ctx)? == 0.0)
+        }
+        AST::Equality(lhs, rhs) => {
+            bool_to_number(evaluate(lhs, ctx)? == evaluate(rhs, ctx)?)
+        }
+        AST::Inequality(lhs, rhs) => {
+            bool_to_number(evaluate(lhs, ctx)? != evaluate(rhs, ctx)?)
+        }
+        AST::LessThan(lhs, rhs) => {
+            bool_to_number(evaluate(lhs, ctx)? < evaluate(rhs, ctx)?)
+        }
+        AST::GreaterThan(lhs, rhs) => {
+            bool_to_number(evaluate(lhs, ctx)? > evaluate(rhs, ctx)?)
+        }
+        AST::LessThanOrEqual(lhs, rhs) => {
+            bool_to_number(evaluate(lhs, ctx)? <= evaluate(rhs, ctx)?)
+        }
+        AST::GreaterThanOrEqual(lhs, rhs) => {
+            bool_to_number(evaluate(lhs, ctx)? >= evaluate(rhs, ctx)?)
+        }
         AST::Brackets(inner) => evaluate(inner, ctx)?,
         AST::Assign(name, rhs) => {
             let rval = evaluate(rhs, ctx)?;
@@ -363,4 +384,12 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
     }
 
     Ok(result)
+}
+
+fn bool_to_number(b: bool) -> Number {
+    if b {
+        1.0
+    } else {
+        0.0
+    }
 }
