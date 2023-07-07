@@ -96,6 +96,11 @@ mod tests {
     }
 
     #[test]
+    fn test_precedence_bug_fix() {
+        assert_eq!(eval_str("1 + 2 ^ 2 * 2").unwrap(), 9.0);
+    }
+
+    #[test]
     fn test_number_parsing() {
         assert!(eval_str(".1").is_ok());
         assert!(eval_str("1.1").is_ok());
@@ -503,8 +508,7 @@ mod tests {
             a > 0 && a > 1";
         assert_eq!(eval_str(code).unwrap(), 1.0);
 
-        // TODO: Fix bug with precedence first
-        // assert_eq!(eval_str("1 + 1 > 1 && 2 + 2 > 2").unwrap(), 1.0);
+        assert_eq!(eval_str("1 + 1 > 1 && 2 + 2 > 2").unwrap(), 1.0);
     }
 
     #[test]

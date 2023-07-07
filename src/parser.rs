@@ -164,11 +164,10 @@ impl<'a> Parser<'a> {
 
     /// Parses an expression.
     ///
-    /// This works by calling another function that attaches expressions with operators of higher
-    /// precedence to the right hand side of the current operator. Once there are no operators of
-    /// higher precedence, it reads the next operator and creates a new AST node. The currently
-    /// parsed AST becomes the left hand side of the new node and the right hand side is once again
-    /// determined by the other function.
+    /// This works by calling a helper function that parses a part of an expression. Once that
+    /// helper function returned the AST of the expression snipper, this function reads the next
+    /// operator and creates a new AST node. The currently parsed AST becomes the left hand side of
+    /// the new node and the right hand side is once again determined by the helper function.
     fn parse_expression(&mut self) -> Result<AST, ParseError> {
         let mut lhs = self.parse_expression_with_min_precedence(0)?;
         while let Some(Token::Operator(op)) = self.peek() {
@@ -181,24 +180,30 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    /// Helper function for `parse_expression` that parses an expression that includes operators of
-    /// equal or higher precedence than `min_precedence`.
+    /// Helper function for [`Self::parse_expression`] that parses an expression that includes all
+    /// operators with a precedence equal to or higher than `min_precedence`. This means that it
+    /// takes all operators until it sees an operator of lower precedence than `min_precedence`.
     ///
-    /// This function recursively calls itself to build up a chain of operators of increasing
-    /// precedence. The base case of the recursion is reached when the next operator has smaller or
-    /// equal precedence than the previous one. This will return the current chain.
+    /// When this function meets an operator with a precedence that is equal to or higher than
+    /// `min_precedence`, it calls itself again. The recursive call accepts only operators that
+    /// have higher predence than the current one. This is done until an operator of lower
+    /// precedence is found. In that case the function returns the AST that it parsed so far and
+    /// walks up the recursive call stack until that operator's precedence is equal to or higher
+    /// than `min_precedence`. The returned AST is then used as the left hand side for that
+    /// operator. The right hand side is once again determined by this function as was already
+    /// explained.
     ///
     /// ## Example
     ///
-    /// Calling the function with the input `1 + 2 * 3 ^ 4 + 5` would stop at the last `+` and
-    /// would produce the following AST:
+    /// Calling the function with the input `1 + 2 ^ 3 * 4` and a `min_precedence` of `0` would
+    /// result in the following AST:
     ///
     ///              +
-    ///            1   *
-    ///              2   ^
-    ///                3   4
+    ///            1         *
+    ///                  ^     4
+    ///                2   3 
     ///
-    /// Or in another notation: Add(1, Multiply(2, Power(3, 4))
+    /// Or in another notation: `Add(1, Multiply(Power(2, 3), 4)`
     fn parse_expression_with_min_precedence(
         &mut self,
         min_precedence: u8,
@@ -231,22 +236,20 @@ impl<'a> Parser<'a> {
                 if self.peek_nth(2) == Some(&Token::LParen) {
                     self.parse_function_call()
                 } else {
-                    let lhs = self.parse_identifier_or_value()?;
-                    match self.peek() {
-                        Some(Token::Operator(op)) => {
-                            let precedence = op_precedence(*op, true)?;
-                            if precedence >= min_precedence {
-                                let op = op.clone();
-                                self.next();
-                                let rhs =
-                                    self.parse_expression_with_min_precedence(precedence + 1)?;
-                                combine_lhs_rhs(op, lhs, rhs)
-                            } else {
-                                Ok(lhs)
-                            }
+                    let mut lhs = self.parse_identifier_or_value()?;
+                    while let Some(Token::Operator(op)) = self.peek() {
+                        let op = *op;
+                        let precedence = op_precedence(op, true)?;
+                        if precedence >= min_precedence {
+                            self.next();
+                            let rhs =
+                                self.parse_expression_with_min_precedence(precedence + 1)?;
+                            lhs = combine_lhs_rhs(op, lhs, rhs)?;
+                        } else {
+                            break;
                         }
-                        _ => Ok(lhs),
                     }
+                    Ok(lhs)
                 }
             }
             Some(token) => Err(ParseError::UnexpectedToken(token.clone())),
