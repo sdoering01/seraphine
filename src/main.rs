@@ -12,7 +12,15 @@ use tokenizer::tokenize;
 
 fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<Number, CalcError> {
     let tokens = tokenize(s)?;
+    if cfg!(debug_assertions) {
+        println!("Tokens: {:?}", tokens);
+    }
+
     let ast = parse(&tokens)?;
+    if cfg!(debug_assertions) {
+        println!("AST: {:#?}", ast);
+    }
+
     let result = evaluate(&ast, ctx)?;
     Ok(result)
 }
