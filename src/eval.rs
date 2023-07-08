@@ -15,6 +15,7 @@ pub enum ControlFlow {
 }
 
 pub type Number = f64;
+const NULL_VALUE: Number = 0.0;
 
 pub enum Function {
     Builtin {
@@ -287,10 +288,10 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
         } => {
             let func = Function::new_user_defined(name, args.clone(), *body.clone())?;
             ctx.add_function(name, func)?;
-            0.0
+            NULL_VALUE
         }
         AST::Lines(lines) => {
-            let mut result = 0.0;
+            let mut result = NULL_VALUE;
             for line in lines.into_iter() {
                 result = evaluate(line, ctx)?;
             }
@@ -386,17 +387,17 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
             } else if let Some(else_body) = else_body {
                 evaluate(else_body, ctx)?;
             }
-            0.0
+            NULL_VALUE
         }
         AST::WhileLoop { condition, body } => {
             while evaluate(condition, ctx)? != 0.0 {
                 evaluate(body, ctx)?;
             }
-            0.0
+            NULL_VALUE
         }
         AST::Return(expr) => {
             let val = match expr {
-                None => 0.0,
+                None => NULL_VALUE,
                 Some(expr) => evaluate(expr, ctx)?,
             };
             return Err(EvalError::InternalControlFlow(ControlFlow::Return(val)));
