@@ -3,7 +3,10 @@ use std::{
     io,
 };
 
-use crate::tokenizer::{Operator, Token};
+use crate::{
+    eval::ControlFlow,
+    tokenizer::{Operator, Token},
+};
 
 #[derive(Debug)]
 pub enum CalcError {
@@ -119,6 +122,7 @@ pub enum EvalError {
         arg_name: String,
     },
     CallStackOverflow,
+    InternalControlFlow(ControlFlow),
 }
 
 impl Display for EvalError {
@@ -150,6 +154,8 @@ impl Display for EvalError {
                 func_name, arg_name
             ),
             CallStackOverflow => write!(f, "Call stack overflow (too many nested function calls)"),
+            // TODO: Change this once returns are allowed outside of functions
+            InternalControlFlow(ControlFlow::Return(_)) => write!(f, "Return statement outside of function"),
         }
     }
 }

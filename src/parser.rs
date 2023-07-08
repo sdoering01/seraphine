@@ -41,6 +41,7 @@ pub enum AST {
         condition: Box<AST>,
         body: Box<AST>,
     },
+    Return(Option<Box<AST>>),
 }
 
 /// Returns the precedence of the operator.
@@ -147,6 +148,7 @@ impl<'a> Parser<'a> {
                 Token::Keyword(Keyword::Fn) => (Some(self.parse_function_definition()?), true),
                 Token::Keyword(Keyword::If) => (Some(self.parse_if_statement()?), true),
                 Token::Keyword(Keyword::While) => (Some(self.parse_while_loop()?), true),
+                Token::Keyword(Keyword::Return) => (Some(self.parse_return()?), true),
                 Token::Identifier(_) if self.peek_nth(2) == Some(&Token::Equal) => {
                     (Some(self.parse_assignment()?), true)
                 }
@@ -380,6 +382,16 @@ impl<'a> Parser<'a> {
             condition: Box::new(condition),
             body: Box::new(body),
         })
+    }
+
+    fn parse_return(&mut self) -> Result<AST, ParseError> {
+        // return [ <expr> ]
+        self.expect(Token::Keyword(Keyword::Return))?;
+        let expr = match self.peek() {
+            Some(&Token::Newline | &Token::RBrace) => None,
+            _ => Some(Box::new(self.parse_expression()?)),
+        };
+        Ok(AST::Return(expr))
     }
 
     /// Takes the next token, behaving like `next` of an iterator.

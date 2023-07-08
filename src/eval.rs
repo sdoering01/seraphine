@@ -9,6 +9,11 @@ use crate::{error::EvalError, parser::AST};
 // this is too large.
 const CALL_STACK_SIZE_LIMIT: usize = 100;
 
+#[derive(Debug, Clone)]
+pub enum ControlFlow {
+    Return(Number),
+}
+
 pub type Number = f64;
 
 pub enum Function {
@@ -73,7 +78,7 @@ impl Function {
                 }
                 ctx.function_scope = Some(scope);
 
-                let call_result = evaluate(body, ctx);
+                let call_result = evaluate_catch_return(body, ctx);
                 ctx.function_scope = ctx.call_stack.pop();
                 call_result
             }
@@ -389,6 +394,13 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
             }
             0.0
         }
+        AST::Return(expr) => {
+            let val = match expr {
+                None => 0.0,
+                Some(expr) => evaluate(expr, ctx)?,
+            };
+            return Err(EvalError::InternalControlFlow(ControlFlow::Return(val)));
+        }
     };
 
     if !result.is_finite() {
@@ -396,6 +408,13 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
     }
 
     Ok(result)
+}
+
+fn evaluate_catch_return(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
+    match evaluate(ast, ctx) {
+        Err(EvalError::InternalControlFlow(ControlFlow::Return(val))) => Ok(val),
+        other => other,
+    }
 }
 
 fn bool_to_number(b: bool) -> Number {

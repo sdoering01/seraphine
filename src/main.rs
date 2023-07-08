@@ -550,6 +550,65 @@ mod tests {
     }
 
     #[test]
+    fn test_return_statement() {
+        assert!(eval_str("return").is_err());
+        assert!(eval_str("return 1").is_err());
+        assert!(eval_str("return 1 + 1").is_err());
+
+        let code = "\
+            fn do_nothing() {
+                return
+                1
+            }
+            do_nothing()";
+        assert_eq!(eval_str(code).unwrap(), 0.0);
+
+        let code = "\
+            fn do_nothing() { return }
+            do_nothing()";
+        assert_eq!(eval_str(code).unwrap(), 0.0);
+
+        let code = "\
+            fn add(a, b) {
+                return a + b
+                a - b
+            }
+            add(1, 2)";
+        assert_eq!(eval_str(code).unwrap(), 3.0);
+
+        let mut ctx = Context::new();
+        let code = "\
+            fn my_abs(num) {
+                if (num < 0) {
+                    return -num
+                }
+                num
+            }";
+        assert!(eval_str_ctx(code, &mut ctx).is_ok());
+        assert_eq!(eval_str_ctx("my_abs(-1)", &mut ctx).unwrap(), 1.0);
+        assert_eq!(eval_str_ctx("my_abs(42)", &mut ctx).unwrap(), 42.0);
+        assert_eq!(eval_str_ctx("my_abs(-0.23)", &mut ctx).unwrap(), 0.23);
+
+        let code = "\
+            fn a() {
+                b()
+                return 1
+            }
+
+            fn b() {
+                c()
+                return 2
+            }
+            
+            fn c() {
+                return 3
+            }
+
+            a()";
+        assert_eq!(eval_str(code).unwrap(), 1.0);
+    }
+
+    #[test]
     fn test_errors_on_missing_newline() {
         assert!(eval_str("1 + 1 2 + 2").is_err());
         assert!(eval_str("1 2").is_err());
