@@ -1,5 +1,6 @@
-use std::io;
+use std::{io, process};
 
+mod common;
 mod error;
 mod eval;
 mod parser;
@@ -28,9 +29,16 @@ fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<Number, CalcError> {
 fn eval_file(path: &str) -> Result<(), CalcError> {
     let mut ctx = Context::new();
     let contents = std::fs::read_to_string(path)?;
-    let result = eval_str_ctx(&contents, &mut ctx)?;
-    println!("{}", result);
-    Ok(())
+    match eval_str_ctx(&contents, &mut ctx) {
+        Ok(result) => {
+            println!("{}", result);
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("{}", e.format(&contents, path));
+            Err(e)
+        }
+    }
 }
 
 fn repl() {
@@ -60,7 +68,7 @@ fn repl() {
                     //     stdout.lock().flush().expect("Failed to flush stdout");
                     // }
                     Err(err) => {
-                        eprintln!("{}", err);
+                        eprintln!("{}", err.format(&input, "<repl>"));
                         input.clear();
                     }
                 }
@@ -73,13 +81,12 @@ fn repl() {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 {
-        if let Err(err) = eval_file(&args[1]) {
-            eprintln!("{}", err);
+        if eval_file(&args[1]).is_err() {
+            process::exit(1);
         }
-        return;
+    } else {
+        repl();
     }
-
-    repl();
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 use crate::{
+    common::Pos,
     error::{OperatorKind, ParseError},
-    tokenizer::{Keyword, Operator, Token},
+    tokenizer::{Keyword, Operator, Token, TokenKind},
 };
 
 #[derive(Debug, Clone)]
@@ -50,7 +51,7 @@ pub enum AST {
 /// precedence than addition).
 /// `is_binary` provides information about the operator being used as a
 /// unary or binary operator (i.e. if `is_binary` is false, the operator is unary).
-fn op_precedence(op: Operator, is_binary: bool) -> Result<u8, ParseError> {
+fn op_precedence(op: Operator, is_binary: bool, op_pos: Pos) -> Result<u8, ParseError> {
     let precedence = match (op, is_binary) {
         (Operator::Or, true) => 1,
         (Operator::And, true) => 2,
@@ -73,7 +74,11 @@ fn op_precedence(op: Operator, is_binary: bool) -> Result<u8, ParseError> {
             } else {
                 OperatorKind::Unary
             };
-            return Err(ParseError::InvalidOperator(op, kind));
+            return Err(ParseError::InvalidOperator {
+                op,
+                kind,
+                pos: op_pos,
+            });
         }
     };
 
@@ -107,14 +112,14 @@ pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
 
 struct Parser<'a> {
     tokens: &'a [Token],
-    pos: usize,
+    idx: usize,
 }
 
 // TODO: Allow newlines in more places (e.g. argument list of function definition)
 // TODO: After that, allow optional comma at the end of argument lists
 impl<'a> Parser<'a> {
     fn new(tokens: &'a [Token]) -> Self {
-        Parser { tokens, pos: 0 }
+        Parser { tokens, idx: 0 }
     }
 
     /// Entrypoint to the parser
@@ -125,8 +130,11 @@ impl<'a> Parser<'a> {
         //
         // For example: A `}`, where the function stops parsing to let the caller decide whether
         // the token makes sense at this place.
-        if self.pos < self.tokens.len() {
-            return Err(ParseError::UnexpectedToken(self.tokens[self.pos].clone()));
+        if self.idx < self.tokens.len() {
+            return Err(ParseError::UnexpectedToken {
+                token: self.tokens[self.idx].clone(),
+                expected: None,
+            });
         }
         Ok(ast)
     }
@@ -135,21 +143,24 @@ impl<'a> Parser<'a> {
         let mut lines = Vec::new();
         let mut want_newline_this_iteration = false;
         while let Some(token) = self.peek() {
-            let (line, want_newline_next_iteration) = match token {
-                Token::Newline => {
+            let (line, want_newline_next_iteration) = match &token.kind {
+                TokenKind::Eof | TokenKind::Newline => {
                     self.next();
                     (None, false)
                 }
-                Token::RBrace => break,
+                TokenKind::RBrace => break,
                 // All following constructs can only appear at the beginning of a line
                 _ if want_newline_this_iteration => {
-                    return Err(ParseError::ExpectedToken(Token::Newline));
+                    return Err(ParseError::UnexpectedToken {
+                        token: token.clone(),
+                        expected: Some(TokenKind::Newline),
+                    });
                 }
-                Token::Keyword(Keyword::Fn) => (Some(self.parse_function_definition()?), true),
-                Token::Keyword(Keyword::If) => (Some(self.parse_if_statement()?), true),
-                Token::Keyword(Keyword::While) => (Some(self.parse_while_loop()?), true),
-                Token::Keyword(Keyword::Return) => (Some(self.parse_return()?), true),
-                Token::Identifier(_) if self.peek_nth(2) == Some(&Token::Equal) => {
+                TokenKind::Keyword(Keyword::Fn) => (Some(self.parse_function_definition()?), true),
+                TokenKind::Keyword(Keyword::If) => (Some(self.parse_if_statement()?), true),
+                TokenKind::Keyword(Keyword::While) => (Some(self.parse_while_loop()?), true),
+                TokenKind::Keyword(Keyword::Return) => (Some(self.parse_return()?), true),
+                TokenKind::Identifier(_) if self.peek_nth_kind(2) == Some(&TokenKind::Equal) => {
                     (Some(self.parse_assignment()?), true)
                 }
                 _ => (Some(self.parse_expression()?), true),
@@ -172,10 +183,15 @@ impl<'a> Parser<'a> {
     /// the new node and the right hand side is once again determined by the helper function.
     fn parse_expression(&mut self) -> Result<AST, ParseError> {
         let mut lhs = self.parse_expression_with_min_precedence(0)?;
-        while let Some(Token::Operator(op)) = self.peek() {
+        while let Some(Token {
+            kind: TokenKind::Operator(op),
+            pos,
+        }) = self.peek()
+        {
             let op = *op;
+            let pos = *pos;
             self.next();
-            let precedence = op_precedence(op, true)?;
+            let precedence = op_precedence(op, true, pos)?;
             let rhs = self.parse_expression_with_min_precedence(precedence + 1)?;
             lhs = combine_lhs_rhs(op, lhs, rhs)?;
         }
@@ -203,7 +219,7 @@ impl<'a> Parser<'a> {
     ///              +
     ///            1         *
     ///                  ^     4
-    ///                2   3 
+    ///                2   3
     ///
     /// Or in another notation: `Add(1, Multiply(Power(2, 3), 4)`
     fn parse_expression_with_min_precedence(
@@ -211,59 +227,80 @@ impl<'a> Parser<'a> {
         min_precedence: u8,
     ) -> Result<AST, ParseError> {
         match self.peek() {
-            // Parse logic for unary operators could be combined if we add more of them
-            Some(Token::Operator(Operator::Minus)) => {
-                self.next();
-                let unary_minus_precedence = op_precedence(Operator::Minus, false)?;
-                // Not `+ 1` like in the other cases so we can take multiple unary minus operators
-                // after each other
-                let rhs = self.parse_expression_with_min_precedence(unary_minus_precedence)?;
-                Ok(AST::UnaryMinus(Box::new(rhs)))
-            }
-            Some(Token::Operator(Operator::Exclamation)) => {
-                self.next();
-                let boolean_negate_precedence = op_precedence(Operator::Exclamation, false)?;
-                // Not `+ 1` like in the other cases so we can take multiple boolean negate operators
-                // after each other
-                let rhs = self.parse_expression_with_min_precedence(boolean_negate_precedence)?;
-                Ok(AST::BooleanNegate(Box::new(rhs)))
-            }
-            Some(Token::LParen) => {
-                self.next();
-                let inner = self.parse_expression()?;
-                self.expect(Token::RParen)?;
-                Ok(AST::Brackets(Box::new(inner)))
-            }
-            Some(Token::Identifier(_) | Token::Number(_)) => {
-                if self.peek_nth(2) == Some(&Token::LParen) {
-                    self.parse_function_call()
-                } else {
-                    let mut lhs = self.parse_identifier_or_value()?;
-                    while let Some(Token::Operator(op)) = self.peek() {
-                        let op = *op;
-                        let precedence = op_precedence(op, true)?;
-                        if precedence >= min_precedence {
-                            self.next();
-                            let rhs =
-                                self.parse_expression_with_min_precedence(precedence + 1)?;
-                            lhs = combine_lhs_rhs(op, lhs, rhs)?;
+            Some(token) => {
+                match token.kind {
+                    TokenKind::Operator(Operator::Minus) => {
+                        let pos = token.pos;
+                        self.next();
+                        let unary_minus_precedence =
+                            op_precedence(Operator::Minus, false, pos)?;
+                        // Not `+ 1` like in the other cases so we can take multiple unary minus operators
+                        // after each other
+                        let rhs =
+                            self.parse_expression_with_min_precedence(unary_minus_precedence)?;
+                        Ok(AST::UnaryMinus(Box::new(rhs)))
+                    }
+                    TokenKind::Operator(Operator::Exclamation) => {
+                        let pos = token.pos;
+                        self.next();
+                        let boolean_negate_precedence =
+                            op_precedence(Operator::Exclamation, false, pos)?;
+                        // Not `+ 1` like in the other cases so we can take multiple boolean negate operators
+                        // after each other
+                        let rhs =
+                            self.parse_expression_with_min_precedence(boolean_negate_precedence)?;
+                        Ok(AST::BooleanNegate(Box::new(rhs)))
+                    }
+                    TokenKind::LParen => {
+                        self.next();
+                        let inner = self.parse_expression()?;
+                        self.expect(TokenKind::RParen)?;
+                        Ok(AST::Brackets(Box::new(inner)))
+                    }
+                    TokenKind::Identifier(_) | TokenKind::Number(_) => {
+                        if self.peek_nth_kind(2) == Some(&TokenKind::LParen) {
+                            self.parse_function_call()
                         } else {
-                            break;
+                            let mut lhs = self.parse_identifier_or_value()?;
+                            while let Some(Token {
+                                kind: TokenKind::Operator(op),
+                                pos,
+                            }) = self.peek()
+                            {
+                                let op = *op;
+                                let precedence = op_precedence(op, true, *pos)?;
+                                if precedence >= min_precedence {
+                                    self.next();
+                                    let rhs =
+                                        self.parse_expression_with_min_precedence(precedence + 1)?;
+                                    lhs = combine_lhs_rhs(op, lhs, rhs)?;
+                                } else {
+                                    break;
+                                }
+                            }
+                            Ok(lhs)
                         }
                     }
-                    Ok(lhs)
+                    _ => Err(ParseError::UnexpectedToken {
+                        token: token.clone(),
+                        expected: None,
+                    }),
                 }
             }
-            Some(token) => Err(ParseError::UnexpectedToken(token.clone())),
             None => Err(ParseError::NoTokensLeft),
         }
     }
 
     fn parse_identifier_or_value(&mut self) -> Result<AST, ParseError> {
         match self.next() {
-            Some(Token::Identifier(name)) => Ok(AST::Variable(name.clone())),
-            Some(Token::Number(num)) => Ok(AST::Number(num.clone())),
-            Some(token) => Err(ParseError::UnexpectedToken(token.clone())),
+            Some(token) => match &token.kind {
+                TokenKind::Identifier(name) => Ok(AST::Variable(name.clone())),
+                TokenKind::Number(num) => Ok(AST::Number(num.clone())),
+                _ => Err(ParseError::UnexpectedToken {
+                    token: token.clone(),
+                    expected: None,
+                }),
+            },
             None => Err(ParseError::NoTokensLeft),
         }
     }
@@ -271,57 +308,57 @@ impl<'a> Parser<'a> {
     fn parse_function_call(&mut self) -> Result<AST, ParseError> {
         // <name>(<val1>, <val2>, ...)
         let fn_name = self.expect_identifier()?.to_string();
-        self.expect(Token::LParen)?;
+        self.expect(TokenKind::LParen)?;
         let mut args = Vec::new();
-        while self.peek() != Some(&Token::RParen) {
+        while self.peek_kind() != Some(&TokenKind::RParen) {
             let arg = self.parse_expression()?;
             args.push(arg);
 
-            match self.peek() {
+            match self.peek_kind() {
                 // TODO: Remove guard once trailing commas are allowed
-                Some(Token::Comma) if self.peek_nth(2) != Some(&Token::RParen) => {
+                Some(TokenKind::Comma) if self.peek_nth_kind(2) != Some(&TokenKind::RParen) => {
                     self.next();
                 }
                 // Let `expect` after loop handle the error
                 _ => break,
             }
         }
-        self.expect(Token::RParen)?;
+        self.expect(TokenKind::RParen)?;
         Ok(AST::FunctionCall(fn_name, args))
     }
 
     fn parse_assignment(&mut self) -> Result<AST, ParseError> {
         let var_name = self.expect_identifier()?.to_string();
-        self.expect(Token::Equal)?;
+        self.expect(TokenKind::Equal)?;
         let rhs = self.parse_expression()?;
         Ok(AST::Assign(var_name, Box::new(rhs)))
     }
 
     fn parse_function_definition(&mut self) -> Result<AST, ParseError> {
         // fn <name> (<arg1>, <arg2>, ...) { <body> }
-        self.expect(Token::Keyword(Keyword::Fn))?;
+        self.expect(TokenKind::Keyword(Keyword::Fn))?;
         let fn_name = self.expect_identifier()?.to_string();
-        self.expect(Token::LParen)?;
+        self.expect(TokenKind::LParen)?;
 
         let mut arg_names = Vec::new();
-        while let Some(Token::Identifier(arg_name)) = self.peek() {
+        while let Some(TokenKind::Identifier(arg_name)) = self.peek_kind() {
             arg_names.push(arg_name.to_string());
             self.next();
 
-            match self.peek() {
+            match self.peek_kind() {
                 // TODO: Remove guard when trailing commas are allowed
-                Some(Token::Comma) if self.peek_nth(2) != Some(&Token::RParen) => {
+                Some(TokenKind::Comma) if self.peek_nth_kind(2) != Some(&TokenKind::RParen) => {
                     self.next();
                 }
                 _ => break,
             }
         }
 
-        self.expect(Token::RParen)?;
+        self.expect(TokenKind::RParen)?;
         self.skip_newlines();
-        self.expect(Token::LBrace)?;
+        self.expect(TokenKind::LBrace)?;
         let body = self.parse_block()?;
-        self.expect(Token::RBrace)?;
+        self.expect(TokenKind::RBrace)?;
         Ok(AST::FunctionDefinition {
             name: fn_name,
             arg_names,
@@ -331,28 +368,30 @@ impl<'a> Parser<'a> {
 
     fn parse_if_statement(&mut self) -> Result<AST, ParseError> {
         // if ( <expr> ) { <body> } [ else if ( <expr> ) { <body> } [ ... ] ] [ else { <body> } ]
-        self.expect(Token::Keyword(Keyword::If))?;
-        self.expect(Token::LParen)?;
+        self.expect(TokenKind::Keyword(Keyword::If))?;
+        self.expect(TokenKind::LParen)?;
         let condition = self.parse_expression()?;
-        self.expect(Token::RParen)?;
+        self.expect(TokenKind::RParen)?;
         self.skip_newlines();
-        self.expect(Token::LBrace)?;
+        self.expect(TokenKind::LBrace)?;
         let if_body = self.parse_block()?;
         self.skip_newlines();
-        self.expect(Token::RBrace)?;
+        self.expect(TokenKind::RBrace)?;
 
-        let else_body = if self.peek_next_non_newline() == Some(&Token::Keyword(Keyword::Else)) {
+        let else_body = if self.peek_next_non_newline().map(|t| &t.kind)
+            == Some(&TokenKind::Keyword(Keyword::Else))
+        {
             self.skip_newlines();
             self.next();
-            if self.peek() == Some(&Token::Keyword(Keyword::If)) {
+            if self.peek_kind() == Some(&TokenKind::Keyword(Keyword::If)) {
                 let else_if_statement = self.parse_if_statement()?;
                 Some(Box::new(else_if_statement))
             } else {
                 self.skip_newlines();
-                self.expect(Token::LBrace)?;
+                self.expect(TokenKind::LBrace)?;
                 let else_body = self.parse_block()?;
                 self.skip_newlines();
-                self.expect(Token::RBrace)?;
+                self.expect(TokenKind::RBrace)?;
                 Some(Box::new(else_body))
             }
         } else {
@@ -368,15 +407,15 @@ impl<'a> Parser<'a> {
 
     fn parse_while_loop(&mut self) -> Result<AST, ParseError> {
         // while ( <expr> ) { <body> }
-        self.expect(Token::Keyword(Keyword::While))?;
-        self.expect(Token::LParen)?;
+        self.expect(TokenKind::Keyword(Keyword::While))?;
+        self.expect(TokenKind::LParen)?;
         let condition = self.parse_expression()?;
-        self.expect(Token::RParen)?;
+        self.expect(TokenKind::RParen)?;
         self.skip_newlines();
 
-        self.expect(Token::LBrace)?;
+        self.expect(TokenKind::LBrace)?;
         let body = self.parse_block()?;
-        self.expect(Token::RBrace)?;
+        self.expect(TokenKind::RBrace)?;
 
         Ok(AST::WhileLoop {
             condition: Box::new(condition),
@@ -386,9 +425,9 @@ impl<'a> Parser<'a> {
 
     fn parse_return(&mut self) -> Result<AST, ParseError> {
         // return [ <expr> ]
-        self.expect(Token::Keyword(Keyword::Return))?;
-        let expr = match self.peek() {
-            Some(&Token::Newline | &Token::RBrace) => None,
+        self.expect(TokenKind::Keyword(Keyword::Return))?;
+        let expr = match self.peek_kind() {
+            Some(&TokenKind::Newline | &TokenKind::RBrace) => None,
             _ => Some(Box::new(self.parse_expression()?)),
         };
         Ok(AST::Return(expr))
@@ -396,8 +435,8 @@ impl<'a> Parser<'a> {
 
     /// Takes the next token, behaving like `next` of an iterator.
     fn next(&mut self) -> Option<&Token> {
-        let token = self.tokens.get(self.pos);
-        self.pos += 1;
+        let token = self.tokens.get(self.idx);
+        self.idx += 1;
         token
     }
 
@@ -405,12 +444,22 @@ impl<'a> Parser<'a> {
     ///
     /// Peek with n = 1 behaves like `peek` of an iterator, peeking the next available token.
     fn peek_nth(&self, n: usize) -> Option<&Token> {
-        self.tokens.get(self.pos + n - 1)
+        self.tokens.get(self.idx + n - 1)
     }
 
     /// Peeks the next token, behaving like `peek` of an iterator.
     fn peek(&self) -> Option<&Token> {
         self.peek_nth(1)
+    }
+
+    /// Peeks the kind of the nth token.
+    fn peek_nth_kind(&self, n: usize) -> Option<&TokenKind> {
+        self.peek_nth(n).map(|t| &t.kind)
+    }
+
+    /// Peeks the kind of the next token.
+    fn peek_kind(&self) -> Option<&TokenKind> {
+        self.peek_nth_kind(1)
     }
 
     /// Peeks the next token that isn't a newline.
@@ -419,7 +468,7 @@ impl<'a> Parser<'a> {
     /// token.
     fn peek_next_non_newline(&self) -> Option<&Token> {
         let mut peek_idx = 1;
-        while let Some(Token::Newline) = self.peek_nth(peek_idx) {
+        while let Some(TokenKind::Newline) = self.peek_nth_kind(peek_idx) {
             peek_idx += 1;
         }
 
@@ -427,26 +476,38 @@ impl<'a> Parser<'a> {
     }
 
     /// Asserts that `expected` is the next token, while also advancing the position.
-    fn expect(&mut self, expected: Token) -> Result<(), ParseError> {
-        let actual = self.next();
-        if actual != Some(&expected) {
-            return Err(ParseError::ExpectedToken(expected));
+    fn expect(&mut self, expected: TokenKind) -> Result<(), ParseError> {
+        match self.next() {
+            Some(actual) => {
+                if actual.kind != expected {
+                    Err(ParseError::UnexpectedToken {
+                        token: actual.clone(),
+                        expected: Some(expected),
+                    })
+                } else {
+                    Ok(())
+                }
+            }
+            None => Err(ParseError::NoTokensLeft),
         }
-        Ok(())
     }
 
     /// Asserts that the next token is an identifier, returning the inner string slice of the
     /// identifier and advancing the position.
     fn expect_identifier(&mut self) -> Result<&str, ParseError> {
         match self.next() {
-            Some(Token::Identifier(ref name)) => Ok(name),
-            _ => Err(ParseError::ExpectedIdentifier),
+            Some(Token {
+                kind: TokenKind::Identifier(ref name),
+                ..
+            }) => Ok(name),
+            Some(Token { pos, .. }) => Err(ParseError::ExpectedIdentifier { pos: *pos }),
+            None => Err(ParseError::NoTokensLeft),
         }
     }
 
     /// Advanced the position until the next token is not a newline.
     fn skip_newlines(&mut self) {
-        while self.peek() == Some(&Token::Newline) {
+        while self.peek_kind() == Some(&TokenKind::Newline) {
             self.next();
         }
     }
