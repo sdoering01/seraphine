@@ -117,6 +117,15 @@ impl<'a> Tokenizer<'a> {
         while let Some(c) = self.next() {
             let token_start_pos = self.idx - 1;
             let token_kind = match c {
+                '/' if self.take('/') => {
+                    while let Some(c) = self.peek() {
+                        if *c == '\n' {
+                            break;
+                        }
+                        self.next();
+                    }
+                    continue
+                }
                 '!' if self.take('=') => TokenKind::Operator(Operator::Unequal),
                 '=' if self.take('=') => TokenKind::Operator(Operator::Equal),
                 '<' if self.take('=') => TokenKind::Operator(Operator::LessThanOrEqual),

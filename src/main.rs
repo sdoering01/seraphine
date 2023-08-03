@@ -624,4 +624,19 @@ mod tests {
         assert!(eval_str("fn add(a, b) { a + b } fn sub(a, b) { a - b }").is_err());
         assert!(eval_str("if (1){ 1 } if (2){ 2 }").is_err());
     }
+
+    #[test]
+    fn test_comments() {
+        let code = "\
+            // This function adds to numbers
+            fn add(a, b) {
+                a + b  // <- this is where the magic happens
+            }
+
+            sum = add(1, 2) // <- assignment that requires a newline after it
+            sum// no space before comment
+        ";
+
+        assert_eq!(eval_str(code).unwrap(), 3.0);
+    }
 }
