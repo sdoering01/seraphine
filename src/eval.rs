@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::{error::EvalError, parser::AST};
+use crate::{error::EvalError, parser::Ast};
 
 // TODO: Find out how to increase this limit, since the stack of the main thread can overflow if
 // this is too large.
@@ -278,14 +278,16 @@ impl Value {
 
 const NULL_VALUE: Value = Value::Number(0.0);
 
+type BuiltinFunctionClosure = Box<dyn Fn(&mut Context, &[Value]) -> Result<Value, EvalError>>;
+
 pub enum Function {
     Builtin {
         n_args: usize,
-        func: Box<dyn Fn(&mut Context, &[Value]) -> Result<Value, EvalError>>,
+        func: BuiltinFunctionClosure,
     },
     UserDefined {
         arg_names: Vec<String>,
-        body: AST,
+        body: Ast,
     },
 }
 
@@ -303,7 +305,7 @@ impl Function {
     pub fn new_user_defined(
         func_name: &str,
         arg_names: Vec<String>,
-        body: AST,
+        body: Ast,
     ) -> Result<Self, EvalError> {
         let mut arg_set = HashSet::new();
         for name in &arg_names {
@@ -757,9 +759,9 @@ impl Context {
     }
 }
 
-pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Value, EvalError> {
+pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
     let result = match ast {
-        AST::FunctionDefinition {
+        Ast::FunctionDefinition {
             name,
             arg_names: args,
             body,
@@ -768,45 +770,45 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Value, EvalError> {
             ctx.add_function(name, func)?;
             NULL_VALUE
         }
-        AST::Lines(lines) => {
+        Ast::Lines(lines) => {
             let mut result = NULL_VALUE;
-            for line in lines.into_iter() {
+            for line in lines {
                 result = evaluate(line, ctx)?;
             }
             result
         }
-        AST::NumberLiteral(n) => Value::Number(*n),
-        AST::BooleanLiteral(b) => Value::Bool(*b),
-        AST::Variable(name) => ctx
+        Ast::NumberLiteral(n) => Value::Number(*n),
+        Ast::BooleanLiteral(b) => Value::Bool(*b),
+        Ast::Variable(name) => ctx
             .get_var(name)
             .ok_or_else(|| EvalError::VariableNotDefined(name.clone()))?,
-        AST::Add(lhs, rhs) => evaluate(lhs, ctx)?.add(evaluate(rhs, ctx)?)?,
-        AST::Subtract(lhs, rhs) => evaluate(lhs, ctx)?.subtract(evaluate(rhs, ctx)?)?,
-        AST::Multiply(lhs, rhs) => evaluate(lhs, ctx)?.multiply(evaluate(rhs, ctx)?)?,
-        AST::Divide(lhs, rhs) => evaluate(lhs, ctx)?.divide(evaluate(rhs, ctx)?)?,
-        AST::Modulo(lhs, rhs) => evaluate(lhs, ctx)?.modulo(evaluate(rhs, ctx)?)?,
-        AST::Power(lhs, rhs) => evaluate(lhs, ctx)?.power(evaluate(rhs, ctx)?)?,
-        AST::UnaryMinus(rhs) => evaluate(rhs, ctx)?.negate()?,
-        AST::BooleanNegate(rhs) => evaluate(rhs, ctx)?.bool_negate()?,
-        AST::Equality(lhs, rhs) => evaluate(lhs, ctx)?.equal(evaluate(rhs, ctx)?)?,
-        AST::Inequality(lhs, rhs) => evaluate(lhs, ctx)?.unequal(evaluate(rhs, ctx)?)?,
-        AST::LessThan(lhs, rhs) => evaluate(lhs, ctx)?.less_than(evaluate(rhs, ctx)?)?,
-        AST::GreaterThan(lhs, rhs) => evaluate(lhs, ctx)?.greater_than(evaluate(rhs, ctx)?)?,
-        AST::LessThanOrEqual(lhs, rhs) => {
+        Ast::Add(lhs, rhs) => evaluate(lhs, ctx)?.add(evaluate(rhs, ctx)?)?,
+        Ast::Subtract(lhs, rhs) => evaluate(lhs, ctx)?.subtract(evaluate(rhs, ctx)?)?,
+        Ast::Multiply(lhs, rhs) => evaluate(lhs, ctx)?.multiply(evaluate(rhs, ctx)?)?,
+        Ast::Divide(lhs, rhs) => evaluate(lhs, ctx)?.divide(evaluate(rhs, ctx)?)?,
+        Ast::Modulo(lhs, rhs) => evaluate(lhs, ctx)?.modulo(evaluate(rhs, ctx)?)?,
+        Ast::Power(lhs, rhs) => evaluate(lhs, ctx)?.power(evaluate(rhs, ctx)?)?,
+        Ast::UnaryMinus(rhs) => evaluate(rhs, ctx)?.negate()?,
+        Ast::BooleanNegate(rhs) => evaluate(rhs, ctx)?.bool_negate()?,
+        Ast::Equality(lhs, rhs) => evaluate(lhs, ctx)?.equal(evaluate(rhs, ctx)?)?,
+        Ast::Inequality(lhs, rhs) => evaluate(lhs, ctx)?.unequal(evaluate(rhs, ctx)?)?,
+        Ast::LessThan(lhs, rhs) => evaluate(lhs, ctx)?.less_than(evaluate(rhs, ctx)?)?,
+        Ast::GreaterThan(lhs, rhs) => evaluate(lhs, ctx)?.greater_than(evaluate(rhs, ctx)?)?,
+        Ast::LessThanOrEqual(lhs, rhs) => {
             evaluate(lhs, ctx)?.less_than_or_equal(evaluate(rhs, ctx)?)?
         }
-        AST::GreaterThanOrEqual(lhs, rhs) => {
+        Ast::GreaterThanOrEqual(lhs, rhs) => {
             evaluate(lhs, ctx)?.greater_than_or_equal(evaluate(rhs, ctx)?)?
         }
-        AST::And(lhs, rhs) => evaluate(lhs, ctx)?.and(|| evaluate(rhs, ctx))?,
-        AST::Or(lhs, rhs) => evaluate(lhs, ctx)?.or(|| evaluate(rhs, ctx))?,
-        AST::Brackets(inner) => evaluate(inner, ctx)?,
-        AST::Assign(name, rhs) => {
+        Ast::And(lhs, rhs) => evaluate(lhs, ctx)?.and(|| evaluate(rhs, ctx))?,
+        Ast::Or(lhs, rhs) => evaluate(lhs, ctx)?.or(|| evaluate(rhs, ctx))?,
+        Ast::Brackets(inner) => evaluate(inner, ctx)?,
+        Ast::Assign(name, rhs) => {
             let rval = evaluate(rhs, ctx)?;
             ctx.set_var(name, rval.clone());
             rval
         }
-        AST::FunctionCall(name, args_ast) => {
+        Ast::FunctionCall(name, args_ast) => {
             let func = ctx
                 .get_function(name)
                 .ok_or_else(|| EvalError::FunctionNotDefined(name.clone()))?;
@@ -827,7 +829,7 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Value, EvalError> {
                 .collect::<Result<_, _>>()?;
             func.call(ctx, &args)?
         }
-        AST::IfStatement {
+        Ast::IfStatement {
             condition,
             if_body,
             else_body,
@@ -840,13 +842,13 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Value, EvalError> {
             }
             NULL_VALUE
         }
-        AST::WhileLoop { condition, body } => {
+        Ast::WhileLoop { condition, body } => {
             while evaluate(condition, ctx)?.as_bool() {
                 evaluate(body, ctx)?;
             }
             NULL_VALUE
         }
-        AST::Return(expr) => {
+        Ast::Return(expr) => {
             let val = match expr {
                 None => NULL_VALUE,
                 Some(expr) => evaluate(expr, ctx)?,
@@ -858,7 +860,7 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Value, EvalError> {
     Ok(result)
 }
 
-fn evaluate_catch_return(ast: &AST, ctx: &mut Context) -> Result<Value, EvalError> {
+fn evaluate_catch_return(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
     match evaluate(ast, ctx) {
         Err(EvalError::InternalControlFlow(ControlFlow::Return(val))) => Ok(val),
         other => other,

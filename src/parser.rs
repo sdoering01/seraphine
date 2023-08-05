@@ -5,45 +5,45 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub enum AST {
-    Lines(Vec<AST>),
+pub enum Ast {
+    Lines(Vec<Ast>),
     NumberLiteral(f64),
     BooleanLiteral(bool),
     Variable(String),
-    Add(Box<AST>, Box<AST>),
-    Subtract(Box<AST>, Box<AST>),
-    Multiply(Box<AST>, Box<AST>),
-    Divide(Box<AST>, Box<AST>),
-    Modulo(Box<AST>, Box<AST>),
-    Power(Box<AST>, Box<AST>),
-    UnaryMinus(Box<AST>),
-    BooleanNegate(Box<AST>),
-    Equality(Box<AST>, Box<AST>),
-    Inequality(Box<AST>, Box<AST>),
-    LessThan(Box<AST>, Box<AST>),
-    GreaterThan(Box<AST>, Box<AST>),
-    LessThanOrEqual(Box<AST>, Box<AST>),
-    GreaterThanOrEqual(Box<AST>, Box<AST>),
-    And(Box<AST>, Box<AST>),
-    Or(Box<AST>, Box<AST>),
-    Brackets(Box<AST>),
-    Assign(String, Box<AST>),
-    FunctionCall(String, Vec<AST>),
+    Add(Box<Ast>, Box<Ast>),
+    Subtract(Box<Ast>, Box<Ast>),
+    Multiply(Box<Ast>, Box<Ast>),
+    Divide(Box<Ast>, Box<Ast>),
+    Modulo(Box<Ast>, Box<Ast>),
+    Power(Box<Ast>, Box<Ast>),
+    UnaryMinus(Box<Ast>),
+    BooleanNegate(Box<Ast>),
+    Equality(Box<Ast>, Box<Ast>),
+    Inequality(Box<Ast>, Box<Ast>),
+    LessThan(Box<Ast>, Box<Ast>),
+    GreaterThan(Box<Ast>, Box<Ast>),
+    LessThanOrEqual(Box<Ast>, Box<Ast>),
+    GreaterThanOrEqual(Box<Ast>, Box<Ast>),
+    And(Box<Ast>, Box<Ast>),
+    Or(Box<Ast>, Box<Ast>),
+    Brackets(Box<Ast>),
+    Assign(String, Box<Ast>),
+    FunctionCall(String, Vec<Ast>),
     FunctionDefinition {
         name: String,
         arg_names: Vec<String>,
-        body: Box<AST>,
+        body: Box<Ast>,
     },
     IfStatement {
-        condition: Box<AST>,
-        if_body: Box<AST>,
-        else_body: Option<Box<AST>>,
+        condition: Box<Ast>,
+        if_body: Box<Ast>,
+        else_body: Option<Box<Ast>>,
     },
     WhileLoop {
-        condition: Box<AST>,
-        body: Box<AST>,
+        condition: Box<Ast>,
+        body: Box<Ast>,
     },
-    Return(Option<Box<AST>>),
+    Return(Option<Box<Ast>>),
 }
 
 /// Returns the precedence of the operator.
@@ -86,28 +86,28 @@ fn op_precedence(op: Operator, is_binary: bool, op_pos: Pos) -> Result<u8, Parse
     Ok(precedence)
 }
 
-fn combine_lhs_rhs(op: Operator, lhs: AST, rhs: AST) -> Result<AST, ParseError> {
+fn combine_lhs_rhs(op: Operator, lhs: Ast, rhs: Ast) -> Result<Ast, ParseError> {
     let combined = match op {
-        Operator::Plus => AST::Add(Box::new(lhs), Box::new(rhs)),
-        Operator::Minus => AST::Subtract(Box::new(lhs), Box::new(rhs)),
-        Operator::Star => AST::Multiply(Box::new(lhs), Box::new(rhs)),
-        Operator::Slash => AST::Divide(Box::new(lhs), Box::new(rhs)),
-        Operator::Percent => AST::Modulo(Box::new(lhs), Box::new(rhs)),
-        Operator::Caret => AST::Power(Box::new(lhs), Box::new(rhs)),
-        Operator::Equal => AST::Equality(Box::new(lhs), Box::new(rhs)),
-        Operator::Unequal => AST::Inequality(Box::new(lhs), Box::new(rhs)),
-        Operator::LessThan => AST::LessThan(Box::new(lhs), Box::new(rhs)),
-        Operator::GreaterThan => AST::GreaterThan(Box::new(lhs), Box::new(rhs)),
-        Operator::LessThanOrEqual => AST::LessThanOrEqual(Box::new(lhs), Box::new(rhs)),
-        Operator::GreaterThanOrEqual => AST::GreaterThanOrEqual(Box::new(lhs), Box::new(rhs)),
-        Operator::And => AST::And(Box::new(lhs), Box::new(rhs)),
-        Operator::Or => AST::Or(Box::new(lhs), Box::new(rhs)),
+        Operator::Plus => Ast::Add(Box::new(lhs), Box::new(rhs)),
+        Operator::Minus => Ast::Subtract(Box::new(lhs), Box::new(rhs)),
+        Operator::Star => Ast::Multiply(Box::new(lhs), Box::new(rhs)),
+        Operator::Slash => Ast::Divide(Box::new(lhs), Box::new(rhs)),
+        Operator::Percent => Ast::Modulo(Box::new(lhs), Box::new(rhs)),
+        Operator::Caret => Ast::Power(Box::new(lhs), Box::new(rhs)),
+        Operator::Equal => Ast::Equality(Box::new(lhs), Box::new(rhs)),
+        Operator::Unequal => Ast::Inequality(Box::new(lhs), Box::new(rhs)),
+        Operator::LessThan => Ast::LessThan(Box::new(lhs), Box::new(rhs)),
+        Operator::GreaterThan => Ast::GreaterThan(Box::new(lhs), Box::new(rhs)),
+        Operator::LessThanOrEqual => Ast::LessThanOrEqual(Box::new(lhs), Box::new(rhs)),
+        Operator::GreaterThanOrEqual => Ast::GreaterThanOrEqual(Box::new(lhs), Box::new(rhs)),
+        Operator::And => Ast::And(Box::new(lhs), Box::new(rhs)),
+        Operator::Or => Ast::Or(Box::new(lhs), Box::new(rhs)),
         Operator::Exclamation => unreachable!(),
     };
     Ok(combined)
 }
 
-pub fn parse(tokens: &[Token]) -> Result<AST, ParseError> {
+pub fn parse(tokens: &[Token]) -> Result<Ast, ParseError> {
     Parser::new(tokens).parse()
 }
 
@@ -124,7 +124,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Entrypoint to the parser
-    fn parse(&mut self) -> Result<AST, ParseError> {
+    fn parse(&mut self) -> Result<Ast, ParseError> {
         let ast = self.parse_block()?;
         // If some function stopped parsing for some reason and we haven't parsed all tokens, the
         // token at the current position is unexpected.
@@ -140,7 +140,7 @@ impl<'a> Parser<'a> {
         Ok(ast)
     }
 
-    fn parse_block(&mut self) -> Result<AST, ParseError> {
+    fn parse_block(&mut self) -> Result<Ast, ParseError> {
         let mut lines = Vec::new();
         let mut want_newline_this_iteration = false;
         while let Some(token) = self.peek() {
@@ -173,7 +173,7 @@ impl<'a> Parser<'a> {
 
             want_newline_this_iteration = want_newline_next_iteration;
         }
-        Ok(AST::Lines(lines))
+        Ok(Ast::Lines(lines))
     }
 
     /// Parses an expression.
@@ -182,7 +182,7 @@ impl<'a> Parser<'a> {
     /// helper function returned the AST of the expression snipper, this function reads the next
     /// operator and creates a new AST node. The currently parsed AST becomes the left hand side of
     /// the new node and the right hand side is once again determined by the helper function.
-    fn parse_expression(&mut self) -> Result<AST, ParseError> {
+    fn parse_expression(&mut self) -> Result<Ast, ParseError> {
         let mut lhs = self.parse_expression_with_min_precedence(0)?;
         while let Some(Token {
             kind: TokenKind::Operator(op),
@@ -226,7 +226,7 @@ impl<'a> Parser<'a> {
     fn parse_expression_with_min_precedence(
         &mut self,
         min_precedence: u8,
-    ) -> Result<AST, ParseError> {
+    ) -> Result<Ast, ParseError> {
         match self.peek() {
             Some(token) => {
                 match token.kind {
@@ -238,7 +238,7 @@ impl<'a> Parser<'a> {
                         // after each other
                         let rhs =
                             self.parse_expression_with_min_precedence(unary_minus_precedence)?;
-                        Ok(AST::UnaryMinus(Box::new(rhs)))
+                        Ok(Ast::UnaryMinus(Box::new(rhs)))
                     }
                     TokenKind::Operator(Operator::Exclamation) => {
                         let pos = token.pos;
@@ -249,13 +249,13 @@ impl<'a> Parser<'a> {
                         // after each other
                         let rhs =
                             self.parse_expression_with_min_precedence(boolean_negate_precedence)?;
-                        Ok(AST::BooleanNegate(Box::new(rhs)))
+                        Ok(Ast::BooleanNegate(Box::new(rhs)))
                     }
                     TokenKind::LParen => {
                         self.next();
                         let inner = self.parse_expression()?;
                         self.expect(TokenKind::RParen)?;
-                        Ok(AST::Brackets(Box::new(inner)))
+                        Ok(Ast::Brackets(Box::new(inner)))
                     }
                     TokenKind::Identifier(_)
                         if self.peek_nth_kind(2) == Some(&TokenKind::LParen) =>
@@ -294,13 +294,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_identifier_or_value(&mut self) -> Result<AST, ParseError> {
+    fn parse_identifier_or_value(&mut self) -> Result<Ast, ParseError> {
         match self.next() {
             Some(token) => match &token.kind {
-                TokenKind::Identifier(name) => Ok(AST::Variable(name.clone())),
-                TokenKind::Number(num) => Ok(AST::NumberLiteral(*num)),
-                TokenKind::Keyword(Keyword::True) => Ok(AST::BooleanLiteral(true)),
-                TokenKind::Keyword(Keyword::False) => Ok(AST::BooleanLiteral(false)),
+                TokenKind::Identifier(name) => Ok(Ast::Variable(name.clone())),
+                TokenKind::Number(num) => Ok(Ast::NumberLiteral(*num)),
+                TokenKind::Keyword(Keyword::True) => Ok(Ast::BooleanLiteral(true)),
+                TokenKind::Keyword(Keyword::False) => Ok(Ast::BooleanLiteral(false)),
                 _ => Err(ParseError::UnexpectedToken {
                     token: token.clone(),
                     expected: None,
@@ -310,7 +310,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_function_call(&mut self) -> Result<AST, ParseError> {
+    fn parse_function_call(&mut self) -> Result<Ast, ParseError> {
         // <name>(<val1>, <val2>, ...)
         let fn_name = self.expect_identifier()?.to_string();
         self.expect(TokenKind::LParen)?;
@@ -329,17 +329,17 @@ impl<'a> Parser<'a> {
             }
         }
         self.expect(TokenKind::RParen)?;
-        Ok(AST::FunctionCall(fn_name, args))
+        Ok(Ast::FunctionCall(fn_name, args))
     }
 
-    fn parse_assignment(&mut self) -> Result<AST, ParseError> {
+    fn parse_assignment(&mut self) -> Result<Ast, ParseError> {
         let var_name = self.expect_identifier()?.to_string();
         self.expect(TokenKind::Equal)?;
         let rhs = self.parse_expression()?;
-        Ok(AST::Assign(var_name, Box::new(rhs)))
+        Ok(Ast::Assign(var_name, Box::new(rhs)))
     }
 
-    fn parse_function_definition(&mut self) -> Result<AST, ParseError> {
+    fn parse_function_definition(&mut self) -> Result<Ast, ParseError> {
         // fn <name> (<arg1>, <arg2>, ...) { <body> }
         self.expect(TokenKind::Keyword(Keyword::Fn))?;
         let fn_name = self.expect_identifier()?.to_string();
@@ -364,14 +364,14 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LBrace)?;
         let body = self.parse_block()?;
         self.expect(TokenKind::RBrace)?;
-        Ok(AST::FunctionDefinition {
+        Ok(Ast::FunctionDefinition {
             name: fn_name,
             arg_names,
             body: Box::new(body),
         })
     }
 
-    fn parse_if_statement(&mut self) -> Result<AST, ParseError> {
+    fn parse_if_statement(&mut self) -> Result<Ast, ParseError> {
         // if ( <expr> ) { <body> } [ else if ( <expr> ) { <body> } [ ... ] ] [ else { <body> } ]
         self.expect(TokenKind::Keyword(Keyword::If))?;
         self.expect(TokenKind::LParen)?;
@@ -403,14 +403,14 @@ impl<'a> Parser<'a> {
             None
         };
 
-        Ok(AST::IfStatement {
+        Ok(Ast::IfStatement {
             condition: Box::new(condition),
             if_body: Box::new(if_body),
             else_body,
         })
     }
 
-    fn parse_while_loop(&mut self) -> Result<AST, ParseError> {
+    fn parse_while_loop(&mut self) -> Result<Ast, ParseError> {
         // while ( <expr> ) { <body> }
         self.expect(TokenKind::Keyword(Keyword::While))?;
         self.expect(TokenKind::LParen)?;
@@ -422,20 +422,20 @@ impl<'a> Parser<'a> {
         let body = self.parse_block()?;
         self.expect(TokenKind::RBrace)?;
 
-        Ok(AST::WhileLoop {
+        Ok(Ast::WhileLoop {
             condition: Box::new(condition),
             body: Box::new(body),
         })
     }
 
-    fn parse_return(&mut self) -> Result<AST, ParseError> {
+    fn parse_return(&mut self) -> Result<Ast, ParseError> {
         // return [ <expr> ]
         self.expect(TokenKind::Keyword(Keyword::Return))?;
         let expr = match self.peek_kind() {
             Some(&TokenKind::Newline | &TokenKind::RBrace) => None,
             _ => Some(Box::new(self.parse_expression()?)),
         };
-        Ok(AST::Return(expr))
+        Ok(Ast::Return(expr))
     }
 
     /// Takes the next token, behaving like `next` of an iterator.
