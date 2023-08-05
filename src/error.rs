@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     common::Pos,
-    eval::ControlFlow,
+    eval::{ControlFlow, Type},
     tokenizer::{Operator, Token, TokenKind},
 };
 
@@ -165,6 +165,11 @@ pub enum EvalError {
         func_name: String,
         arg_name: String,
     },
+    WrongType {
+        expected: Type,
+        got: Type,
+    },
+    TypeError(String),
     CallStackOverflow,
     InternalControlFlow(ControlFlow),
 }
@@ -197,6 +202,10 @@ impl Display for EvalError {
                 "Function '{}' has duplicate argument name '{}'",
                 func_name, arg_name
             ),
+            WrongType { expected, got } => {
+                write!(f, "Expected value of type '{}' but got value of type ‘{}' instead", expected, got)
+            }
+            TypeError(e) => write!(f, "{}", e),
             CallStackOverflow => write!(f, "Call stack overflow (too many nested function calls)"),
             // TODO: Change this once returns are allowed outside of functions
             InternalControlFlow(ControlFlow::Return(_)) => {
@@ -314,4 +323,3 @@ mod tests {
         assert_eq!(got_error, want_error);
     }
 }
-

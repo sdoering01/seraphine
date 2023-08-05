@@ -7,11 +7,11 @@ mod parser;
 mod tokenizer;
 
 use error::CalcError;
-use eval::{evaluate, Context, Number};
+use eval::{evaluate, Context, Value};
 use parser::parse;
 use tokenizer::tokenize;
 
-fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<Number, CalcError> {
+fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<Value, CalcError> {
     let tokens = tokenize(s)?;
     if cfg!(debug_assertions) {
         println!("Tokens: {:?}", tokens);
@@ -92,9 +92,46 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use eval::Value;
 
-    fn eval_str(s: &str) -> Result<Number, CalcError> {
+    fn eval_str(s: &str) -> Result<Value, CalcError> {
         eval_str_ctx(s, &mut Context::new())
+    }
+    
+    macro_rules! assert_eq_num {
+        ( $left:expr, $right:expr ) => {
+            match ($left, $right) {
+                (value, expected) => {
+                    let $crate::eval::Value::Number(got) = value else {
+                        ::std::panic!("value is not a number");
+                    };
+                    ::std::assert_eq!(got, expected);
+                }
+            }
+        };
+        ( $left:expr, $right:expr, $eps:expr ) => {
+            match ($left, $right) {
+                (value, expected) => {
+                    let $crate::eval::Value::Number(got) = value else {
+                        ::std::panic!("value is not a number");
+                    };
+                    ::std::assert!((got - expected).abs() < $eps);
+                }
+            }
+        };
+    }
+
+    macro_rules! assert_eq_bool {
+        ( $left:expr, $right:expr ) => {
+            match ($left, $right) {
+                (value, expected) => {
+                    let $crate::eval::Value::Bool(got) = value else {
+                        ::std::panic!("value is not a bool");
+                    };
+                    ::std::assert_eq!(got, expected);
+                }
+            }
+        };
     }
 
     #[test]
@@ -103,16 +140,16 @@ mod tests {
         assert!(eval_str("-").is_err());
         assert!(eval_str("* 2").is_err());
         assert!(eval_str("2 +").is_err());
-        assert_eq!(eval_str("2").unwrap(), 2.0);
-        assert_eq!(eval_str("2 - 3").unwrap(), -1.0);
-        assert_eq!(eval_str("2-3").unwrap(), -1.0);
-        assert_eq!(eval_str("2 + 2 * 2").unwrap(), 6.0);
-        assert_eq!(eval_str("3 * 2 * 5 + 10 / 5 - 8").unwrap(), 24.0);
+        assert_eq_num!(eval_str("2").unwrap(), 2.0);
+        assert_eq_num!(eval_str("2 - 3").unwrap(), -1.0);
+        assert_eq_num!(eval_str("2-3").unwrap(), -1.0);
+        assert_eq_num!(eval_str("2 + 2 * 2").unwrap(), 6.0);
+        assert_eq_num!(eval_str("3 * 2 * 5 + 10 / 5 - 8").unwrap(), 24.0);
     }
 
     #[test]
     fn test_precedence_bug_fix() {
-        assert_eq!(eval_str("1 + 2 ^ 2 * 2").unwrap(), 9.0);
+        assert_eq_num!(eval_str("1 + 2 ^ 2 * 2").unwrap(), 9.0);
     }
 
     #[test]
@@ -130,23 +167,25 @@ mod tests {
 
     #[test]
     fn test_unary_minus() {
-        assert_eq!(eval_str("-2").unwrap(), -2.0);
-        assert_eq!(eval_str("2--2").unwrap(), 4.0);
-        assert_eq!(eval_str("2+-2").unwrap(), 0.0);
-        assert_eq!(eval_str("-2+-2").unwrap(), -4.0);
-        assert_eq!(eval_str("2---2").unwrap(), 0.0);
+        assert_eq_num!(eval_str("-2").unwrap(), -2.0);
+        assert_eq_num!(eval_str("2--2").unwrap(), 4.0);
+        assert_eq_num!(eval_str("2+-2").unwrap(), 0.0);
+        assert_eq_num!(eval_str("-2+-2").unwrap(), -4.0);
+        assert_eq_num!(eval_str("2---2").unwrap(), 0.0);
         assert!(eval_str("2*+-2").is_err());
+
+        assert!(eval_str("-true").is_err());
     }
 
     #[test]
     fn test_brackets() {
-        assert_eq!(eval_str("4 * (5 - 1)").unwrap(), 16.0);
-        assert_eq!(eval_str("(2 + 2) * (3 + 3)").unwrap(), 24.0);
-        assert_eq!(eval_str("(2 + 2)").unwrap(), 4.0);
-        assert_eq!(eval_str("-(2 + 2)").unwrap(), -4.0);
-        assert_eq!(eval_str("-((2 + 3) * 4)").unwrap(), -20.0);
-        assert_eq!(eval_str("-((2 + -4) * 5) / 2").unwrap(), 5.0);
-        assert_eq!(eval_str("(1 + 2) + 3").unwrap(), 6.0);
+        assert_eq_num!(eval_str("4 * (5 - 1)").unwrap(), 16.0);
+        assert_eq_num!(eval_str("(2 + 2) * (3 + 3)").unwrap(), 24.0);
+        assert_eq_num!(eval_str("(2 + 2)").unwrap(), 4.0);
+        assert_eq_num!(eval_str("-(2 + 2)").unwrap(), -4.0);
+        assert_eq_num!(eval_str("-((2 + 3) * 4)").unwrap(), -20.0);
+        assert_eq_num!(eval_str("-((2 + -4) * 5) / 2").unwrap(), 5.0);
+        assert_eq_num!(eval_str("(1 + 2) + 3").unwrap(), 6.0);
         assert!(eval_str("-2 + 2)").is_err());
         assert!(eval_str("-(2 + 2").is_err());
         assert!(eval_str("()").is_err());
@@ -156,16 +195,18 @@ mod tests {
     fn test_power() {
         assert!(eval_str("4 ^").is_err());
         assert!(eval_str("^ 3").is_err());
-        assert_eq!(eval_str("1 ^ -3").unwrap(), 1.0);
-        assert_eq!(eval_str("(-1) ^ -3").unwrap(), -1.0);
-        assert_eq!(eval_str("(-1) ^ -4").unwrap(), 1.0);
-        assert_eq!(eval_str("2 ^ -3").unwrap(), 0.125);
-        assert_eq!(eval_str("2 ^ 0").unwrap(), 1.0);
-        assert_eq!(eval_str("3 ^ 5").unwrap(), 243.0);
-        assert_eq!(eval_str("-1 ^ 4").unwrap(), 1.0);
-        assert_eq!(eval_str("-1 ^ 5").unwrap(), -1.0);
-        assert_eq!(eval_str("-1 ^ -5").unwrap(), -1.0);
-        assert_eq!(eval_str("(1 + 1) ^ (4 * 2)").unwrap(), 256.0);
+        assert_eq_num!(eval_str("1 ^ -3").unwrap(), 1.0);
+        assert_eq_num!(eval_str("(-1) ^ -3").unwrap(), -1.0);
+        assert_eq_num!(eval_str("(-1) ^ -4").unwrap(), 1.0);
+        assert_eq_num!(eval_str("2 ^ -3").unwrap(), 0.125);
+        assert_eq_num!(eval_str("2 ^ 0").unwrap(), 1.0);
+        assert_eq_num!(eval_str("3 ^ 5").unwrap(), 243.0);
+        assert_eq_num!(eval_str("-1 ^ 4").unwrap(), 1.0);
+        assert_eq_num!(eval_str("-1 ^ 5").unwrap(), -1.0);
+        assert_eq_num!(eval_str("-1 ^ -5").unwrap(), -1.0);
+        assert_eq_num!(eval_str("(1 + 1) ^ (4 * 2)").unwrap(), 256.0);
+
+        assert!(eval_str("true ^ true").is_err());
     }
 
     #[test]
@@ -173,29 +214,31 @@ mod tests {
         assert!(eval_str("2 %").is_err());
         assert!(eval_str("% 3").is_err());
         assert!(eval_str("100 % 0").is_err());
-        assert_eq!(eval_str("7 % 3").unwrap(), 1.0);
-        assert_eq!(eval_str("7 % -3").unwrap(), 1.0);
-        assert_eq!(eval_str("-7 % 3").unwrap(), -1.0);
-        assert_eq!(eval_str("-9 % -3").unwrap(), 0.0);
-        assert_eq!(eval_str("42 % 1337").unwrap(), 42.0);
-        assert_eq!(eval_str("2 + 3 * 4 % 5").unwrap(), 4.0);
+        assert_eq_num!(eval_str("7 % 3").unwrap(), 1.0);
+        assert_eq_num!(eval_str("7 % -3").unwrap(), 1.0);
+        assert_eq_num!(eval_str("-7 % 3").unwrap(), -1.0);
+        assert_eq_num!(eval_str("-9 % -3").unwrap(), 0.0);
+        assert_eq_num!(eval_str("42 % 1337").unwrap(), 42.0);
+        assert_eq_num!(eval_str("2 + 3 * 4 % 5").unwrap(), 4.0);
+
+        assert!(eval_str("true % false").is_err());
     }
 
     #[test]
     fn test_variables() {
         let mut ctx = Context::new();
-        assert_eq!(eval_str_ctx("a = 2", &mut ctx).unwrap(), 2.0);
-        assert_eq!(eval_str_ctx("b = a + 1", &mut ctx).unwrap(), 3.0);
-        assert_eq!(eval_str_ctx("c = a + b", &mut ctx).unwrap(), 5.0);
-        assert_eq!(ctx.get_var("a"), Some(2.0));
-        assert_eq!(ctx.get_var("b"), Some(3.0));
-        assert_eq!(ctx.get_var("c"), Some(5.0));
+        assert_eq_num!(eval_str_ctx("a = 2", &mut ctx).unwrap(), 2.0);
+        assert_eq_num!(eval_str_ctx("b = a + 1", &mut ctx).unwrap(), 3.0);
+        assert_eq_num!(eval_str_ctx("c = a + b", &mut ctx).unwrap(), 5.0);
+        assert_eq_num!(ctx.get_var("a").unwrap(), 2.0);
+        assert_eq_num!(ctx.get_var("b").unwrap(), 3.0);
+        assert_eq_num!(ctx.get_var("c").unwrap(), 5.0);
 
         assert!(eval_str("not_defined").is_err());
 
         let mut ctx = Context::new();
-        assert_eq!(eval_str_ctx("some_longer_name = 2", &mut ctx).unwrap(), 2.0);
-        assert_eq!(ctx.get_var("some_longer_name"), Some(2.0));
+        assert_eq_num!(eval_str_ctx("some_longer_name = 2", &mut ctx).unwrap(), 2.0);
+        assert_eq_num!(ctx.get_var("some_longer_name").unwrap(), 2.0);
 
         assert!(eval_str("a b = 2").is_err());
         assert!(eval_str("2 = 2").is_err());
@@ -208,34 +251,37 @@ mod tests {
         use std::f64::consts;
 
         let eps = 1e-10;
-        assert!((eval_str("sin(pi/2)").unwrap() - 1.0).abs() < eps);
-        assert!((eval_str("cos(pi/2)").unwrap() - 0.0).abs() < eps);
-        assert!((eval_str("tan(pi/4)").unwrap() - 1.0).abs() < eps);
-        assert!((eval_str("asin(1)").unwrap() - consts::FRAC_PI_2).abs() < eps);
-        assert!((eval_str("acos(1)").unwrap() - 0.0).abs() < eps);
-        assert!((eval_str("atan(1)").unwrap() - consts::FRAC_PI_4).abs() < eps);
-        assert!((eval_str("sinh(1)").unwrap() - 1_f64.sinh()).abs() < eps);
-        assert!((eval_str("cosh(1)").unwrap() - 1_f64.cosh()).abs() < eps);
-        assert!((eval_str("tanh(1)").unwrap() - 1_f64.tanh()).abs() < eps);
+        assert_eq_num!(eval_str("sin(pi/2)").unwrap(), 1.0, eps);
+        assert_eq_num!(eval_str("cos(pi/2)").unwrap(), 0.0, eps);
+        assert_eq_num!(eval_str("tan(pi/4)").unwrap(), 1.0, eps);
+        assert_eq_num!(eval_str("asin(1)").unwrap(), consts::FRAC_PI_2, eps);
+        assert_eq_num!(eval_str("acos(1)").unwrap(), 0.0, eps);
+        assert_eq_num!(eval_str("atan(1)").unwrap(), consts::FRAC_PI_4, eps);
+        assert_eq_num!(eval_str("sinh(1)").unwrap(), 1_f64.sinh(), eps);
+        assert_eq_num!(eval_str("cosh(1)").unwrap(), 1_f64.cosh(), eps);
+        assert_eq_num!(eval_str("tanh(1)").unwrap(), 1_f64.tanh(), eps);
 
-        assert!((eval_str("ln(e)").unwrap() - 1.0).abs() < eps);
-        assert!((eval_str("log2(1024)").unwrap() - 10.0).abs() < eps);
-        assert!((eval_str("log10(1000)").unwrap() - 3.0).abs() < eps);
-        assert!((eval_str("log(27, 3)").unwrap() - 3.0).abs() < eps);
+        assert_eq_num!(eval_str("ln(e)").unwrap(), 1.0, eps);
+        assert_eq_num!(eval_str("log2(1024)").unwrap(), 10.0, eps);
+        assert_eq_num!(eval_str("log10(1000)").unwrap(), 3.0, eps);
+        assert_eq_num!(eval_str("log(27, 3)").unwrap(), 3.0, eps);
 
-        assert!((eval_str("abs(-1)").unwrap() - 1.0).abs() < eps);
-        assert!((eval_str("abs(1)").unwrap() - 1.0).abs() < eps);
-        assert!((eval_str("min(1, 5)").unwrap() - 1.0).abs() < eps);
-        assert!((eval_str("max(1, 5)").unwrap() - 5.0).abs() < eps);
-        assert!((eval_str("floor(1.5)").unwrap() - 1.0).abs() < eps);
-        assert!((eval_str("ceil(1.5)").unwrap() - 2.0).abs() < eps);
-        assert!((eval_str("round(1.5)").unwrap() - 2.0).abs() < eps);
-        assert!((eval_str("round(1.4)").unwrap() - 1.0).abs() < eps);
-        assert!((eval_str("round(1.6)").unwrap() - 2.0).abs() < eps);
+        assert_eq_num!(eval_str("abs(-1)").unwrap(), 1.0, eps);
+        assert_eq_num!(eval_str("abs(1)").unwrap(), 1.0, eps);
+        assert_eq_num!(eval_str("min(1, 5)").unwrap(), 1.0, eps);
+        assert_eq_num!(eval_str("max(1, 5)").unwrap(), 5.0, eps);
+        assert_eq_num!(eval_str("floor(1.5)").unwrap(), 1.0, eps);
+        assert_eq_num!(eval_str("ceil(1.5)").unwrap(), 2.0, eps);
+        assert_eq_num!(eval_str("round(1.5)").unwrap(), 2.0, eps);
+        assert_eq_num!(eval_str("round(1.4)").unwrap(), 1.0, eps);
+        assert_eq_num!(eval_str("round(1.6)").unwrap(), 2.0, eps);
 
-        assert!(eval_str("sqrt(-1)").is_err());
-        assert!((eval_str("sqrt(4)").unwrap() - 2.0).abs() < eps);
-        assert!((eval_str("exp(2)").unwrap() - 7.389056099).abs() < eps);
+        assert_eq_num!(eval_str("sqrt(4)").unwrap(), 2.0, eps);
+        assert_eq_num!(eval_str("exp(2)").unwrap(), 7.389056099, eps);
+
+        assert!(eval_str("exp(true)").is_err());
+
+        // TODO: Add functions for testing floats (finite, infinite, NaN) and test them here
     }
 
     #[test]
@@ -245,7 +291,11 @@ mod tests {
         let mut ctx = Context::new();
         ctx.add_function(
             "add",
-            Function::new_builtin(2, |_ctx, args| args[0] + args[1]),
+            Function::new_builtin(2, |_ctx, args| {
+                let Value::Number(arg1) = args[0] else { unreachable!() };
+                let Value::Number(arg2) = args[1] else { unreachable!() };
+                Ok(Value::Number(arg1 + arg2))
+            }),
         )
         .unwrap();
 
@@ -254,9 +304,9 @@ mod tests {
         assert!(eval_str_ctx("add(1,)", &mut ctx).is_err());
         assert!(eval_str_ctx("add(,1)", &mut ctx).is_err());
         assert!(eval_str_ctx("add(1 1)", &mut ctx).is_err());
-        assert_eq!(eval_str_ctx("add(1, 2)", &mut ctx).unwrap(), 3.0);
+        assert_eq_num!(eval_str_ctx("add(1, 2)", &mut ctx).unwrap(), 3.0);
         assert!(eval_str_ctx("add(1, 2, 3)", &mut ctx).is_err());
-        assert_eq!(eval_str_ctx("add(1, add(2, 3))", &mut ctx).unwrap(), 6.0);
+        assert_eq_num!(eval_str_ctx("add(1, add(2, 3))", &mut ctx).unwrap(), 6.0);
     }
 
     #[test]
@@ -271,15 +321,15 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result, 5.0);
-        assert_eq!(ctx.get_var("a"), Some(2.0));
-        assert_eq!(ctx.get_var("b"), Some(3.0));
-        assert_eq!(ctx.get_var("c"), Some(5.0));
+        assert_eq_num!(result, 5.0);
+        assert_eq_num!(ctx.get_var("a").unwrap(), 2.0);
+        assert_eq_num!(ctx.get_var("b").unwrap(), 3.0);
+        assert_eq_num!(ctx.get_var("c").unwrap(), 5.0);
 
-        assert_eq!(eval_str("\n42\n").unwrap(), 42.0);
-        assert_eq!(eval_str("42\n").unwrap(), 42.0);
-        assert_eq!(eval_str("\n42").unwrap(), 42.0);
-        assert_eq!(eval_str("\n\n\n").unwrap(), 0.0);
+        assert_eq_num!(eval_str("\n42\n").unwrap(), 42.0);
+        assert_eq_num!(eval_str("42\n").unwrap(), 42.0);
+        assert_eq_num!(eval_str("\n42").unwrap(), 42.0);
+        assert_eq_num!(eval_str("\n\n\n").unwrap(), 0.0);
     }
 
     #[test]
@@ -303,7 +353,7 @@ mod tests {
             }\n\
             \n\
             sub(42, add(1, 2, 3))";
-        assert_eq!(eval_str(code).unwrap(), 36.0);
+        assert_eq_num!(eval_str(code).unwrap(), 36.0);
 
         assert!(eval_str("fn add(a, {b) a + b }").is_err());
         assert!(eval_str("fn empty_body() {}").is_ok());
@@ -320,221 +370,262 @@ mod tests {
     fn test_if_statements() {
         let code = "\
             a = 0
-            if (0) {
+            if (false) {
                 a = 2
             }
             a";
-        assert_eq!(eval_str(code).unwrap(), 0.0);
+        assert_eq_num!(eval_str(code).unwrap(), 0.0);
 
         let code = "\
             a = 0
-            if (1) {
+            if (true) {
                 a = 2
             }
             a";
-        assert_eq!(eval_str(code).unwrap(), 2.0);
+        assert_eq_num!(eval_str(code).unwrap(), 2.0);
 
         let code = "\
             a = 0
-            if (0) {
+            if (false) {
                 a = 2
             } else {
                 a = 3
             }
             a";
-        assert_eq!(eval_str(code).unwrap(), 3.0);
+        assert_eq_num!(eval_str(code).unwrap(), 3.0);
 
         let code = "\
             a = 0
-            if (1) {
+            if (true) {
                 a = 2
             } else {
                 a = 3
             }
             a";
-        assert_eq!(eval_str(code).unwrap(), 2.0);
+        assert_eq_num!(eval_str(code).unwrap(), 2.0);
 
         let code = "\
             a = 0
-            if (0) {
+            if (false) {
                 a = 2
-            } else if (0) {
+            } else if (false) {
                 a = 3
             }
             a";
-        assert_eq!(eval_str(code).unwrap(), 0.0);
+        assert_eq_num!(eval_str(code).unwrap(), 0.0);
 
         let code = "\
             a = 0
-            if (0) {
+            if (false) {
                 a = 2
-            } else if (0) {
-                a = 3
-            } else {
-                a = 4
-            }
-            a";
-        assert_eq!(eval_str(code).unwrap(), 4.0);
-
-        let code = "\
-            a = 0
-            if (1) {
-                a = 2
-            } else if (0) {
+            } else if (false) {
                 a = 3
             } else {
                 a = 4
             }
             a";
-        assert_eq!(eval_str(code).unwrap(), 2.0);
+        assert_eq_num!(eval_str(code).unwrap(), 4.0);
 
         let code = "\
             a = 0
-            if (1) {
+            if (true) {
                 a = 2
-            } else if (1) {
+            } else if (false) {
                 a = 3
             } else {
                 a = 4
             }
             a";
-        assert_eq!(eval_str(code).unwrap(), 2.0);
+        assert_eq_num!(eval_str(code).unwrap(), 2.0);
 
         let code = "\
             a = 0
-            if (0) {
+            if (true) {
                 a = 2
-            } else if (1) {
+            } else if (true) {
                 a = 3
             } else {
                 a = 4
             }
             a";
-        assert_eq!(eval_str(code).unwrap(), 3.0);
+        assert_eq_num!(eval_str(code).unwrap(), 2.0);
 
         let code = "\
             a = 0
-            if (0) {
+            if (false) {
                 a = 2
-            } else if (0) {
+            } else if (true) {
                 a = 3
-            } else if (1) {
+            } else {
+                a = 4
+            }
+            a";
+        assert_eq_num!(eval_str(code).unwrap(), 3.0);
+
+        let code = "\
+            a = 0
+            if (false) {
+                a = 2
+            } else if (false) {
+                a = 3
+            } else if (true) {
                 a = 4
             } else {
                 a = 5
             }
             a";
-        assert_eq!(eval_str(code).unwrap(), 4.0);
+        assert_eq_num!(eval_str(code).unwrap(), 4.0);
     }
 
     #[test]
     fn test_boolean_negate_operator() {
-        assert_eq!(eval_str("!1").unwrap(), 0.0);
-        assert_eq!(eval_str("!0.01").unwrap(), 0.0);
-        assert_eq!(eval_str("!0.00001").unwrap(), 0.0);
-        assert_eq!(eval_str("!42").unwrap(), 0.0);
-        assert_eq!(eval_str("!-42").unwrap(), 0.0);
-        assert_eq!(eval_str("!-1").unwrap(), 0.0);
+        assert_eq_bool!(eval_str("!1").unwrap(), false);
+        assert_eq_bool!(eval_str("!0.01").unwrap(), false);
+        assert_eq_bool!(eval_str("!0.00001").unwrap(), false);
+        assert_eq_bool!(eval_str("!42").unwrap(), false);
+        assert_eq_bool!(eval_str("!-42").unwrap(), false);
+        assert_eq_bool!(eval_str("!-1").unwrap(), false);
+        assert_eq_bool!(eval_str("!!42").unwrap(), true);
+
+        assert_eq_bool!(eval_str("!true").unwrap(), false);
+        assert_eq_bool!(eval_str("!!!true").unwrap(), false);
+        assert_eq_bool!(eval_str("!false").unwrap(), true);
     }
 
     #[test]
     fn test_equality_operator() {
-        assert_eq!(eval_str("1 == 0").unwrap(), 0.0);
-        assert_eq!(eval_str("-1 == -2").unwrap(), 0.0);
-        assert_eq!(eval_str("42 == 21").unwrap(), 0.0);
-        assert_eq!(eval_str("0 == 0").unwrap(), 1.0);
-        assert_eq!(eval_str("42 == 42").unwrap(), 1.0);
-        assert_eq!(eval_str("-1 == -1").unwrap(), 1.0);
-        assert_eq!(eval_str("-0 == 0").unwrap(), 1.0);
+        assert_eq_bool!(eval_str("1 == 0").unwrap(), false);
+        assert_eq_bool!(eval_str("-1 == -2").unwrap(), false);
+        assert_eq_bool!(eval_str("42 == 21").unwrap(), false);
+        assert_eq_bool!(eval_str("0 == 0").unwrap(), true);
+        assert_eq_bool!(eval_str("42 == 42").unwrap(), true);
+        assert_eq_bool!(eval_str("-1 == -1").unwrap(), true);
+        assert_eq_bool!(eval_str("-0 == 0").unwrap(), true);
+
+        assert_eq_bool!(eval_str("true == true").unwrap(), true);
+        assert_eq_bool!(eval_str("false == true").unwrap(), false);
+        assert_eq_bool!(eval_str("1.0 == true").unwrap(), false);
+        assert_eq_bool!(eval_str("false == 0.0").unwrap(), false);
     }
 
     #[test]
     fn test_inequality_operator() {
-        assert_eq!(eval_str("1 != 0").unwrap(), 1.0);
-        assert_eq!(eval_str("-1 != -2").unwrap(), 1.0);
-        assert_eq!(eval_str("42 != 21").unwrap(), 1.0);
-        assert_eq!(eval_str("-42 != 42").unwrap(), 1.0);
-        assert_eq!(eval_str("0 != 0").unwrap(), 0.0);
-        assert_eq!(eval_str("42 != 42").unwrap(), 0.0);
-        assert_eq!(eval_str("-1 != -1").unwrap(), 0.0);
-        assert_eq!(eval_str("-0 != 0").unwrap(), 0.0);
+        assert_eq_bool!(eval_str("1 != 0").unwrap(), true);
+        assert_eq_bool!(eval_str("-1 != -2").unwrap(), true);
+        assert_eq_bool!(eval_str("42 != 21").unwrap(), true);
+        assert_eq_bool!(eval_str("-42 != 42").unwrap(), true);
+        assert_eq_bool!(eval_str("0 != 0").unwrap(), false);
+        assert_eq_bool!(eval_str("42 != 42").unwrap(), false);
+        assert_eq_bool!(eval_str("-1 != -1").unwrap(), false);
+        assert_eq_bool!(eval_str("-0 != 0").unwrap(), false);
+
+        assert_eq_bool!(eval_str("true != true").unwrap(), false);
+        assert_eq_bool!(eval_str("false != true").unwrap(), true);
+        assert_eq_bool!(eval_str("1.0 != true").unwrap(), true);
+        assert_eq_bool!(eval_str("false != 0.0").unwrap(), true);
     }
 
     #[test]
     fn test_less_than_operator() {
-        assert_eq!(eval_str("0 < 1").unwrap(), 1.0);
-        assert_eq!(eval_str("-2 < -1").unwrap(), 1.0);
-        assert_eq!(eval_str("42 < 21").unwrap(), 0.0);
-        assert_eq!(eval_str("-42 < 42").unwrap(), 1.0);
-        assert_eq!(eval_str("0 < 0").unwrap(), 0.0);
-        assert_eq!(eval_str("42 < 42").unwrap(), 0.0);
-        assert_eq!(eval_str("-1 < -1").unwrap(), 0.0);
-        assert_eq!(eval_str("-0 < 0").unwrap(), 0.0);
+        assert_eq_bool!(eval_str("0 < 1").unwrap(), true);
+        assert_eq_bool!(eval_str("-2 < -1").unwrap(), true);
+        assert_eq_bool!(eval_str("42 < 21").unwrap(), false);
+        assert_eq_bool!(eval_str("-42 < 42").unwrap(), true);
+        assert_eq_bool!(eval_str("0 < 0").unwrap(), false);
+        assert_eq_bool!(eval_str("42 < 42").unwrap(), false);
+        assert_eq_bool!(eval_str("-1 < -1").unwrap(), false);
+        assert_eq_bool!(eval_str("-0 < 0").unwrap(), false);
+
+        assert!(eval_str("true < 2").is_err());
+        assert!(eval_str("true < false").is_err());
+        assert!(eval_str("7 < false").is_err());
     }
 
     #[test]
     fn test_greater_than_operator() {
-        assert_eq!(eval_str("0 > 1").unwrap(), 0.0);
-        assert_eq!(eval_str("-2 > -1").unwrap(), 0.0);
-        assert_eq!(eval_str("42 > 21").unwrap(), 1.0);
-        assert_eq!(eval_str("-42 > 42").unwrap(), 0.0);
-        assert_eq!(eval_str("0 > 0").unwrap(), 0.0);
-        assert_eq!(eval_str("42 > 42").unwrap(), 0.0);
-        assert_eq!(eval_str("-1 > -1").unwrap(), 0.0);
-        assert_eq!(eval_str("-0 > 0").unwrap(), 0.0);
+        assert_eq_bool!(eval_str("0 > 1").unwrap(), false);
+        assert_eq_bool!(eval_str("-2 > -1").unwrap(), false);
+        assert_eq_bool!(eval_str("42 > 21").unwrap(), true);
+        assert_eq_bool!(eval_str("-42 > 42").unwrap(), false);
+        assert_eq_bool!(eval_str("0 > 0").unwrap(), false);
+        assert_eq_bool!(eval_str("42 > 42").unwrap(), false);
+        assert_eq_bool!(eval_str("-1 > -1").unwrap(), false);
+        assert_eq_bool!(eval_str("-0 > 0").unwrap(), false);
+
+        assert!(eval_str("true > 2").is_err());
+        assert!(eval_str("true > false").is_err());
+        assert!(eval_str("7 > false").is_err());
     }
 
     #[test]
     fn test_less_than_or_equal_operator() {
-        assert_eq!(eval_str("0 <= 1").unwrap(), 1.0);
-        assert_eq!(eval_str("-2 <= -1").unwrap(), 1.0);
-        assert_eq!(eval_str("42 <= 21").unwrap(), 0.0);
-        assert_eq!(eval_str("-42 <= 42").unwrap(), 1.0);
-        assert_eq!(eval_str("0 <= 0").unwrap(), 1.0);
-        assert_eq!(eval_str("42 <= 42").unwrap(), 1.0);
-        assert_eq!(eval_str("-1 <= -1").unwrap(), 1.0);
-        assert_eq!(eval_str("-0 <= 0").unwrap(), 1.0);
+        assert_eq_bool!(eval_str("0 <= 1").unwrap(), true);
+        assert_eq_bool!(eval_str("-2 <= -1").unwrap(), true);
+        assert_eq_bool!(eval_str("42 <= 21").unwrap(), false);
+        assert_eq_bool!(eval_str("-42 <= 42").unwrap(), true);
+        assert_eq_bool!(eval_str("0 <= 0").unwrap(), true);
+        assert_eq_bool!(eval_str("42 <= 42").unwrap(), true);
+        assert_eq_bool!(eval_str("-1 <= -1").unwrap(), true);
+        assert_eq_bool!(eval_str("-0 <= 0").unwrap(), true);
+
+        assert!(eval_str("true <= 2").is_err());
+        assert!(eval_str("true <= false").is_err());
+        assert!(eval_str("7 <= false").is_err());
     }
 
     #[test]
     fn test_greater_than_or_equal_operator() {
-        assert_eq!(eval_str("0 >= 1").unwrap(), 0.0);
-        assert_eq!(eval_str("-2 >= -1").unwrap(), 0.0);
-        assert_eq!(eval_str("42 >= 21").unwrap(), 1.0);
-        assert_eq!(eval_str("-42 >= 42").unwrap(), 0.0);
-        assert_eq!(eval_str("0 >= 0").unwrap(), 1.0);
-        assert_eq!(eval_str("42 >= 42").unwrap(), 1.0);
-        assert_eq!(eval_str("-1 >= -1").unwrap(), 1.0);
-        assert_eq!(eval_str("-0 >= 0").unwrap(), 1.0);
+        assert_eq_bool!(eval_str("0 >= 1").unwrap(), false);
+        assert_eq_bool!(eval_str("-2 >= -1").unwrap(), false);
+        assert_eq_bool!(eval_str("42 >= 21").unwrap(), true);
+        assert_eq_bool!(eval_str("-42 >= 42").unwrap(), false);
+        assert_eq_bool!(eval_str("0 >= 0").unwrap(), true);
+        assert_eq_bool!(eval_str("42 >= 42").unwrap(), true);
+        assert_eq_bool!(eval_str("-1 >= -1").unwrap(), true);
+        assert_eq_bool!(eval_str("-0 >= 0").unwrap(), true);
+
+        assert!(eval_str("true >= 2").is_err());
+        assert!(eval_str("true >= false").is_err());
+        assert!(eval_str("7 >= false").is_err());
     }
 
     #[test]
     fn test_and_operator() {
-        assert_eq!(eval_str("0 && 0").unwrap(), 0.0);
-        assert_eq!(eval_str("8 && 0").unwrap(), 0.0);
-        assert_eq!(eval_str("-7 && 0").unwrap(), 0.0);
-        assert_eq!(eval_str("0 && 15").unwrap(), 0.0);
-        assert_eq!(eval_str("0 && -27").unwrap(), 0.0);
-        assert_eq!(eval_str("18 && 1").unwrap(), 1.0);
-        assert_eq!(eval_str("42 && -42").unwrap(), 1.0);
+        assert_eq_bool!(eval_str("0 && 0").unwrap(), false);
+        assert_eq_bool!(eval_str("8 && 0").unwrap(), false);
+        assert_eq_bool!(eval_str("-7 && 0").unwrap(), false);
+        assert_eq_bool!(eval_str("0 && 15").unwrap(), false);
+        assert_eq_bool!(eval_str("0 && -27").unwrap(), false);
+        assert_eq_bool!(eval_str("18 && 1").unwrap(), true);
+        assert_eq_bool!(eval_str("42 && -42").unwrap(), true);
 
         let code = "\
             a = 2
             a > 0 && a > 1";
-        assert_eq!(eval_str(code).unwrap(), 1.0);
+        assert_eq_bool!(eval_str(code).unwrap(), true);
 
-        assert_eq!(eval_str("1 + 1 > 1 && 2 + 2 > 2").unwrap(), 1.0);
+        assert_eq_bool!(eval_str("1 + 1 > 1 && 2 + 2 > 2").unwrap(), true);
+
+        assert_eq_bool!(eval_str("false && true").unwrap(), false);
+        assert_eq_bool!(eval_str("false && false").unwrap(), false);
+        assert_eq_bool!(eval_str("true && true").unwrap(), true);
+        assert_eq_bool!(eval_str("1 && true").unwrap(), true);
     }
 
     #[test]
     fn test_or_operator() {
-        assert_eq!(eval_str("0 || 0").unwrap(), 0.0);
-        assert_eq!(eval_str("8 || 0").unwrap(), 1.0);
-        assert_eq!(eval_str("-7 || 0").unwrap(), 1.0);
-        assert_eq!(eval_str("0 || 15").unwrap(), 1.0);
-        assert_eq!(eval_str("0 || -27").unwrap(), 1.0);
-        assert_eq!(eval_str("18 || 1").unwrap(), 1.0);
-        assert_eq!(eval_str("42 || -42").unwrap(), 1.0);
+        assert_eq_bool!(eval_str("0 || 0").unwrap(), false);
+        assert_eq_bool!(eval_str("8 || 0").unwrap(), true);
+        assert_eq_bool!(eval_str("-7 || 0").unwrap(), true);
+        assert_eq_bool!(eval_str("0 || 15").unwrap(), true);
+        assert_eq_bool!(eval_str("0 || -27").unwrap(), true);
+        assert_eq_bool!(eval_str("18 || 1").unwrap(), true);
+        assert_eq_bool!(eval_str("42 || -42").unwrap(), true);
+
+        assert_eq_bool!(eval_str("false || true").unwrap(), true);
+        assert_eq_bool!(eval_str("false || false").unwrap(), false);
+        assert_eq_bool!(eval_str("true || true").unwrap(), true);
+        assert_eq_bool!(eval_str("1 || true").unwrap(), true);
     }
 
     #[test]
@@ -545,7 +636,7 @@ mod tests {
                 a = 1
             }
             a";
-        assert_eq!(eval_str(code).unwrap(), 0.0);
+        assert_eq_num!(eval_str(code).unwrap(), 0.0);
 
         let code = "\
             a = 0
@@ -553,7 +644,7 @@ mod tests {
                 a = a + 1
             }
             a";
-        assert_eq!(eval_str(code).unwrap(), 5.0);
+        assert_eq_num!(eval_str(code).unwrap(), 5.0);
     }
 
     #[test]
@@ -568,12 +659,12 @@ mod tests {
                 1
             }
             do_nothing()";
-        assert_eq!(eval_str(code).unwrap(), 0.0);
+        assert_eq_num!(eval_str(code).unwrap(), 0.0);
 
         let code = "\
             fn do_nothing() { return }
             do_nothing()";
-        assert_eq!(eval_str(code).unwrap(), 0.0);
+        assert_eq_num!(eval_str(code).unwrap(), 0.0);
 
         let code = "\
             fn add(a, b) {
@@ -581,7 +672,7 @@ mod tests {
                 a - b
             }
             add(1, 2)";
-        assert_eq!(eval_str(code).unwrap(), 3.0);
+        assert_eq_num!(eval_str(code).unwrap(), 3.0);
 
         let mut ctx = Context::new();
         let code = "\
@@ -592,9 +683,9 @@ mod tests {
                 num
             }";
         assert!(eval_str_ctx(code, &mut ctx).is_ok());
-        assert_eq!(eval_str_ctx("my_abs(-1)", &mut ctx).unwrap(), 1.0);
-        assert_eq!(eval_str_ctx("my_abs(42)", &mut ctx).unwrap(), 42.0);
-        assert_eq!(eval_str_ctx("my_abs(-0.23)", &mut ctx).unwrap(), 0.23);
+        assert_eq_num!(eval_str_ctx("my_abs(-1)", &mut ctx).unwrap(), 1.0);
+        assert_eq_num!(eval_str_ctx("my_abs(42)", &mut ctx).unwrap(), 42.0);
+        assert_eq_num!(eval_str_ctx("my_abs(-0.23)", &mut ctx).unwrap(), 0.23);
 
         let code = "\
             fn a() {
@@ -612,7 +703,7 @@ mod tests {
             }
 
             a()";
-        assert_eq!(eval_str(code).unwrap(), 1.0);
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
     }
 
     #[test]
@@ -637,6 +728,12 @@ mod tests {
             sum// no space before comment
         ";
 
-        assert_eq!(eval_str(code).unwrap(), 3.0);
+        assert_eq_num!(eval_str(code).unwrap(), 3.0);
+    }
+
+    #[test]
+    fn test_boolean_literals() {
+        assert_eq_bool!(eval_str("true").unwrap(), true);
+        assert_eq_bool!(eval_str("false").unwrap(), false);
     }
 }

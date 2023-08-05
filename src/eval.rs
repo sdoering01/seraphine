@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Display,
     rc::Rc,
 };
 
@@ -11,16 +12,272 @@ const CALL_STACK_SIZE_LIMIT: usize = 100;
 
 #[derive(Debug, Clone)]
 pub enum ControlFlow {
-    Return(Number),
+    Return(Value),
 }
 
-pub type Number = f64;
-const NULL_VALUE: Number = 0.0;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Type {
+    Number,
+    Bool,
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Type::*;
+        match self {
+            Number => write!(f, "number"),
+            Bool => write!(f, "bool"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value {
+    Number(f64),
+    Bool(bool),
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Value::*;
+        match self {
+            Number(n) => write!(f, "{}", n),
+            Bool(b) => write!(f, "{}", b),
+        }
+    }
+}
+
+impl Value {
+    fn get_type(&self) -> Type {
+        use Value::*;
+        match self {
+            Number(..) => Type::Number,
+            Bool(..) => Type::Bool,
+        }
+    }
+
+    fn assert_type(&self, expected: Type) -> Result<(), EvalError> {
+        let got = self.get_type();
+        if got != expected {
+            return Err(EvalError::WrongType { expected, got });
+        }
+        Ok(())
+    }
+
+    fn as_bool(&self) -> bool {
+        match self {
+            Value::Number(n) => *n != 0.0,
+            Value::Bool(b) => *b,
+        }
+    }
+
+    fn add(self, rhs: Self) -> Result<Value, EvalError> {
+        use Value::*;
+        match (self, rhs) {
+            (Number(l), Number(r)) => Ok(Number(l + r)),
+            (l, r) => {
+                let error = format!(
+                    "Cannot add value of type {} and value of type {}",
+                    l.get_type(),
+                    r.get_type()
+                );
+                Err(EvalError::TypeError(error))
+            }
+        }
+    }
+
+    fn subtract(self, rhs: Self) -> Result<Value, EvalError> {
+        use Value::*;
+        match (self, rhs) {
+            (Number(l), Number(r)) => Ok(Number(l - r)),
+            (l, r) => {
+                let error = format!(
+                    "Cannot subtract value of type {} and value of type {}",
+                    l.get_type(),
+                    r.get_type()
+                );
+                Err(EvalError::TypeError(error))
+            }
+        }
+    }
+
+    fn multiply(self, rhs: Self) -> Result<Value, EvalError> {
+        use Value::*;
+        match (self, rhs) {
+            (Number(l), Number(r)) => Ok(Number(l * r)),
+            (l, r) => {
+                let error = format!(
+                    "Cannot multiply value of type {} and value of type {}",
+                    l.get_type(),
+                    r.get_type()
+                );
+                Err(EvalError::TypeError(error))
+            }
+        }
+    }
+
+    fn divide(self, rhs: Self) -> Result<Value, EvalError> {
+        use Value::*;
+        match (self, rhs) {
+            (Number(l), Number(r)) => {
+                if r == 0.0 {
+                    return Err(EvalError::DivideByZero);
+                }
+                Ok(Number(l / r))
+            }
+            (l, r) => {
+                let error = format!(
+                    "Cannot divide value of type {} and value of type {}",
+                    l.get_type(),
+                    r.get_type()
+                );
+                Err(EvalError::TypeError(error))
+            }
+        }
+    }
+
+    fn modulo(self, rhs: Self) -> Result<Value, EvalError> {
+        use Value::*;
+        match (self, rhs) {
+            (Number(l), Number(r)) => {
+                if r == 0.0 {
+                    return Err(EvalError::DivideByZero);
+                }
+                Ok(Number(l % r))
+            }
+            (l, r) => {
+                let error = format!(
+                    "Cannot modulo value of type {} and value of type {}",
+                    l.get_type(),
+                    r.get_type()
+                );
+                Err(EvalError::TypeError(error))
+            }
+        }
+    }
+
+    fn power(self, rhs: Self) -> Result<Value, EvalError> {
+        use Value::*;
+        match (self, rhs) {
+            (Number(l), Number(r)) => Ok(Number(l.powf(r))),
+            (l, r) => {
+                let error = format!(
+                    "Cannot raise power of value of type {} and value of type {}",
+                    l.get_type(),
+                    r.get_type()
+                );
+                Err(EvalError::TypeError(error))
+            }
+        }
+    }
+
+    fn negate(self) -> Result<Value, EvalError> {
+        use Value::*;
+        match self {
+            Number(l) => Ok(Number(-l)),
+            _ => {
+                let error = format!("Cannot negate value of type {}", self.get_type());
+                Err(EvalError::TypeError(error))
+            }
+        }
+    }
+
+    fn bool_negate(self) -> Result<Value, EvalError> {
+        Ok(Value::Bool(!self.as_bool()))
+    }
+
+    fn equal(self, rhs: Self) -> Result<Value, EvalError> {
+        use Value::*;
+        let eq = match (self, rhs) {
+            (Number(l), Number(r)) => l == r,
+            (Bool(l), Bool(r)) => l == r,
+            _ => false,
+        };
+        Ok(Bool(eq))
+    }
+
+    fn unequal(self, rhs: Self) -> Result<Value, EvalError> {
+        let Value::Bool(eq) = self.equal(rhs)? else { unreachable!() };
+        Ok(Value::Bool(!eq))
+    }
+
+    fn less_than(self, rhs: Self) -> Result<Value, EvalError> {
+        use Value::*;
+        match (self, rhs) {
+            (Number(l), Number(r)) => Ok(Bool(l < r)),
+            (l, r) => {
+                let error = format!(
+                    "Cannot compare value of type {} and value of type {}",
+                    l.get_type(),
+                    r.get_type()
+                );
+                Err(EvalError::TypeError(error))
+            }
+        }
+    }
+
+    fn greater_than(self, rhs: Self) -> Result<Value, EvalError> {
+        use Value::*;
+        match (self, rhs) {
+            (Number(l), Number(r)) => Ok(Bool(l > r)),
+            (l, r) => {
+                let error = format!(
+                    "Cannot compare value of type {} and value of type {}",
+                    l.get_type(),
+                    r.get_type()
+                );
+                Err(EvalError::TypeError(error))
+            }
+        }
+    }
+
+    fn less_than_or_equal(self, rhs: Self) -> Result<Value, EvalError> {
+        use Value::*;
+        match (self, rhs) {
+            (Number(l), Number(r)) => Ok(Bool(l <= r)),
+            (l, r) => {
+                let error = format!(
+                    "Cannot compare value of type {} and value of type {}",
+                    l.get_type(),
+                    r.get_type()
+                );
+                Err(EvalError::TypeError(error))
+            }
+        }
+    }
+
+    fn greater_than_or_equal(self, rhs: Self) -> Result<Value, EvalError> {
+        use Value::*;
+        match (self, rhs) {
+            (Number(l), Number(r)) => Ok(Bool(l >= r)),
+            (l, r) => {
+                let error = format!(
+                    "Cannot compare value of type {} and value of type {}",
+                    l.get_type(),
+                    r.get_type()
+                );
+                Err(EvalError::TypeError(error))
+            }
+        }
+    }
+
+    fn and(self, rhs: Self) -> Result<Value, EvalError> {
+        let result = self.as_bool() && rhs.as_bool();
+        Ok(Value::Bool(result))
+    }
+
+    fn or(self, rhs: Self) -> Result<Value, EvalError> {
+        let result = self.as_bool() || rhs.as_bool();
+        Ok(Value::Bool(result))
+    }
+}
+
+const NULL_VALUE: Value = Value::Number(0.0);
 
 pub enum Function {
     Builtin {
         n_args: usize,
-        func: Box<dyn Fn(&mut Context, &[Number]) -> Number>,
+        func: Box<dyn Fn(&mut Context, &[Value]) -> Result<Value, EvalError>>,
     },
     UserDefined {
         arg_names: Vec<String>,
@@ -31,7 +288,7 @@ pub enum Function {
 impl Function {
     pub fn new_builtin<F>(n_args: usize, func: F) -> Self
     where
-        F: Fn(&mut Context, &[Number]) -> Number + 'static,
+        F: Fn(&mut Context, &[Value]) -> Result<Value, EvalError> + 'static,
     {
         Self::Builtin {
             n_args,
@@ -56,11 +313,11 @@ impl Function {
         Ok(Self::UserDefined { arg_names, body })
     }
 
-    pub fn call(&self, ctx: &mut Context, args: &[Number]) -> Result<Number, EvalError> {
+    pub fn call(&self, ctx: &mut Context, args: &[Value]) -> Result<Value, EvalError> {
         match self {
             Function::Builtin { n_args, func } => {
                 debug_assert!(args.len() == *n_args, "Invalid number of arguments");
-                Ok(func(ctx, args))
+                func(ctx, args)
             }
             Function::UserDefined { arg_names, body } => {
                 debug_assert!(args.len() == arg_names.len(), "Invalid number of arguments");
@@ -71,7 +328,7 @@ impl Function {
 
                 let mut scope = Scope::new();
                 for (name, value) in arg_names.iter().zip(args.iter()) {
-                    scope.set_var(name, *value);
+                    scope.set_var(name, value.clone());
                 }
 
                 if let Some(function_scope) = ctx.function_scope.take() {
@@ -95,7 +352,7 @@ impl Function {
 }
 
 struct Scope {
-    variables: HashMap<String, Number>,
+    variables: HashMap<String, Value>,
     functions: HashMap<String, Rc<Function>>,
 }
 
@@ -123,11 +380,11 @@ impl Scope {
         Ok(())
     }
 
-    pub fn get_var(&self, name: &str) -> Option<Number> {
-        self.variables.get(name).copied()
+    pub fn get_var(&self, name: &str) -> Option<Value> {
+        self.variables.get(name).cloned()
     }
 
-    pub fn set_var(&mut self, name: impl Into<String>, val: Number) {
+    pub fn set_var(&mut self, name: impl Into<String>, val: Value) {
         self.variables.insert(name.into(), val);
     }
 }
@@ -154,90 +411,204 @@ impl Context {
     fn add_standard_variables(&mut self) {
         use std::f64::consts::{E, PI};
 
-        self.set_var("pi", PI);
-        self.set_var("e", E);
+        self.set_var("pi", Value::Number(PI));
+        self.set_var("e", Value::Number(E));
     }
 
     fn add_standard_functions(&mut self) -> Result<(), EvalError> {
-        self.add_function("sin", Function::new_builtin(1, |_ctx, args| args[0].sin()))?;
-        self.add_function("cos", Function::new_builtin(1, |_ctx, args| args[0].cos()))?;
-        self.add_function("tan", Function::new_builtin(1, |_ctx, args| args[0].tan()))?;
+        self.add_function(
+            "sin",
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.sin()))
+            }),
+        )?;
+        self.add_function(
+            "cos",
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.cos()))
+            }),
+        )?;
+        self.add_function(
+            "tan",
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.tan()))
+            }),
+        )?;
         self.add_function(
             "asin",
-            Function::new_builtin(1, |_ctx, args| args[0].asin()),
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.asin()))
+            }),
         )?;
         self.add_function(
             "acos",
-            Function::new_builtin(1, |_ctx, args| args[0].acos()),
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.acos()))
+            }),
         )?;
         self.add_function(
             "atan",
-            Function::new_builtin(1, |_ctx, args| args[0].atan()),
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.atan()))
+            }),
         )?;
         self.add_function(
             "atan2",
-            Function::new_builtin(2, |_ctx, args| args[0].atan2(args[1])),
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                args[1].assert_type(Type::Number)?;
+                let Value::Number(arg1) = args[0] else { unreachable!() };
+                let Value::Number(arg2) = args[1] else { unreachable!() };
+                Ok(Value::Number(arg1.atan2(arg2)))
+            }),
         )?;
         self.add_function(
             "tanh",
-            Function::new_builtin(1, |_ctx, args| args[0].tanh()),
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.tanh()))
+            }),
         )?;
         self.add_function(
             "sinh",
-            Function::new_builtin(1, |_ctx, args| args[0].sinh()),
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.sinh()))
+            }),
         )?;
         self.add_function(
             "cosh",
-            Function::new_builtin(1, |_ctx, args| args[0].cosh()),
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.cosh()))
+            }),
         )?;
 
-        self.add_function("ln", Function::new_builtin(1, |_ctx, args| args[0].ln()))?;
+        self.add_function(
+            "ln",
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.ln()))
+            }),
+        )?;
         self.add_function(
             "log2",
-            Function::new_builtin(1, |_ctx, args| args[0].log2()),
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.log2()))
+            }),
         )?;
         self.add_function(
             "log10",
-            Function::new_builtin(1, |_ctx, args| args[0].log10()),
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.log10()))
+            }),
         )?;
         self.add_function(
             "log",
-            Function::new_builtin(2, |_ctx, args| args[0].log(args[1])),
+            Function::new_builtin(2, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                args[1].assert_type(Type::Number)?;
+                let Value::Number(arg1) = args[0] else { unreachable!() };
+                let Value::Number(arg2) = args[1] else { unreachable!() };
+                Ok(Value::Number(arg1.log(arg2)))
+            }),
         )?;
 
-        self.add_function("abs", Function::new_builtin(1, |_ctx, args| args[0].abs()))?;
+        self.add_function(
+            "abs",
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.abs()))
+            }),
+        )?;
         self.add_function(
             "min",
-            Function::new_builtin(2, |_ctx, args| args[0].min(args[1])),
+            Function::new_builtin(2, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                args[1].assert_type(Type::Number)?;
+                let Value::Number(arg1) = args[0] else { unreachable!() };
+                let Value::Number(arg2) = args[1] else { unreachable!() };
+                Ok(Value::Number(arg1.min(arg2)))
+            }),
         )?;
         self.add_function(
             "max",
-            Function::new_builtin(2, |_ctx, args| args[0].max(args[1])),
+            Function::new_builtin(2, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                args[1].assert_type(Type::Number)?;
+                let Value::Number(arg1) = args[0] else { unreachable!() };
+                let Value::Number(arg2) = args[1] else { unreachable!() };
+                Ok(Value::Number(arg1.max(arg2)))
+            }),
         )?;
         self.add_function(
             "floor",
-            Function::new_builtin(1, |_ctx, args| args[0].floor()),
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.floor()))
+            }),
         )?;
         self.add_function(
             "ceil",
-            Function::new_builtin(1, |_ctx, args| args[0].ceil()),
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.ceil()))
+            }),
         )?;
         self.add_function(
             "round",
-            Function::new_builtin(1, |_ctx, args| args[0].round()),
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.round()))
+            }),
         )?;
 
         self.add_function(
             "sqrt",
-            Function::new_builtin(1, |_ctx, args| args[0].sqrt()),
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.sqrt()))
+            }),
         )?;
-        self.add_function("exp", Function::new_builtin(1, |_ctx, args| args[0].exp()))?;
+        self.add_function(
+            "exp",
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Number(arg.exp()))
+            }),
+        )?;
 
         self.add_function(
             "inspect",
             Function::new_builtin(1, |_ctx, args| {
                 println!("{}", args[0]);
-                args[0]
+                Ok(args[0].clone())
             }),
         )?;
 
@@ -263,14 +634,14 @@ impl Context {
         scope.add_function(name, func)
     }
 
-    pub fn get_var(&self, name: &str) -> Option<Number> {
+    pub fn get_var(&self, name: &str) -> Option<Value> {
         self.function_scope
             .as_ref()
             .and_then(|s| s.get_var(name))
             .or_else(|| self.global_scope.get_var(name))
     }
 
-    pub fn set_var(&mut self, name: impl Into<String>, val: Number) {
+    pub fn set_var(&mut self, name: impl Into<String>, val: Value) {
         let scope = self
             .function_scope
             .as_mut()
@@ -279,7 +650,7 @@ impl Context {
     }
 }
 
-pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
+pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Value, EvalError> {
     let result = match ast {
         AST::FunctionDefinition {
             name,
@@ -297,66 +668,38 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
             }
             result
         }
-        AST::Number(n) => n.parse().map_err(|_| EvalError::Overflow)?,
+        AST::NumberLiteral(n) => {
+            let number = n.parse().map_err(|_| EvalError::Overflow)?;
+            Value::Number(number)
+        }
+        AST::BooleanLiteral(b) => Value::Bool(*b),
         AST::Variable(name) => ctx
             .get_var(name)
             .ok_or_else(|| EvalError::VariableNotDefined(name.clone()))?,
-        AST::Add(lhs, rhs) => evaluate(lhs, ctx)? + evaluate(rhs, ctx)?,
-        AST::Subtract(lhs, rhs) => evaluate(lhs, ctx)? - evaluate(rhs, ctx)?,
-        AST::Multiply(lhs, rhs) => evaluate(lhs, ctx)? * evaluate(rhs, ctx)?,
-        AST::Divide(lhs, rhs) => {
-            let lval = evaluate(lhs, ctx)?;
-            let rval = evaluate(rhs, ctx)?;
-            if rval == 0.0 {
-                return Err(EvalError::DivideByZero);
-            }
-            lval / rval
-        }
-        AST::Modulo(lhs, rhs) => {
-            let lval = evaluate(lhs, ctx)?;
-            let rval = evaluate(rhs, ctx)?;
-            if rval == 0.0 {
-                return Err(EvalError::DivideByZero);
-            }
-            lval % rval
-        }
-        AST::Power(lhs, rhs) => {
-            let lval = evaluate(lhs, ctx)?;
-            let rval = evaluate(rhs, ctx)?;
-            lval.powf(rval)
-        }
-        AST::UnaryMinus(rhs) => -evaluate(rhs, ctx)?,
-        AST::BooleanNegate(rhs) => {
-            bool_to_number(evaluate(rhs, ctx)? == 0.0)
-        }
-        AST::Equality(lhs, rhs) => {
-            bool_to_number(evaluate(lhs, ctx)? == evaluate(rhs, ctx)?)
-        }
-        AST::Inequality(lhs, rhs) => {
-            bool_to_number(evaluate(lhs, ctx)? != evaluate(rhs, ctx)?)
-        }
-        AST::LessThan(lhs, rhs) => {
-            bool_to_number(evaluate(lhs, ctx)? < evaluate(rhs, ctx)?)
-        }
-        AST::GreaterThan(lhs, rhs) => {
-            bool_to_number(evaluate(lhs, ctx)? > evaluate(rhs, ctx)?)
-        }
+        AST::Add(lhs, rhs) => evaluate(lhs, ctx)?.add(evaluate(rhs, ctx)?)?,
+        AST::Subtract(lhs, rhs) => evaluate(lhs, ctx)?.subtract(evaluate(rhs, ctx)?)?,
+        AST::Multiply(lhs, rhs) => evaluate(lhs, ctx)?.multiply(evaluate(rhs, ctx)?)?,
+        AST::Divide(lhs, rhs) => evaluate(lhs, ctx)?.divide(evaluate(rhs, ctx)?)?,
+        AST::Modulo(lhs, rhs) => evaluate(lhs, ctx)?.modulo(evaluate(rhs, ctx)?)?,
+        AST::Power(lhs, rhs) => evaluate(lhs, ctx)?.power(evaluate(rhs, ctx)?)?,
+        AST::UnaryMinus(rhs) => evaluate(rhs, ctx)?.negate()?,
+        AST::BooleanNegate(rhs) => evaluate(rhs, ctx)?.bool_negate()?,
+        AST::Equality(lhs, rhs) => evaluate(lhs, ctx)?.equal(evaluate(rhs, ctx)?)?,
+        AST::Inequality(lhs, rhs) => evaluate(lhs, ctx)?.unequal(evaluate(rhs, ctx)?)?,
+        AST::LessThan(lhs, rhs) => evaluate(lhs, ctx)?.less_than(evaluate(rhs, ctx)?)?,
+        AST::GreaterThan(lhs, rhs) => evaluate(lhs, ctx)?.greater_than(evaluate(rhs, ctx)?)?,
         AST::LessThanOrEqual(lhs, rhs) => {
-            bool_to_number(evaluate(lhs, ctx)? <= evaluate(rhs, ctx)?)
+            evaluate(lhs, ctx)?.less_than_or_equal(evaluate(rhs, ctx)?)?
         }
         AST::GreaterThanOrEqual(lhs, rhs) => {
-            bool_to_number(evaluate(lhs, ctx)? >= evaluate(rhs, ctx)?)
+            evaluate(lhs, ctx)?.greater_than_or_equal(evaluate(rhs, ctx)?)?
         }
-        AST::And(lhs, rhs) => {
-            bool_to_number(evaluate(lhs, ctx)? != 0.0 && evaluate(rhs, ctx)? != 0.0)
-        }
-        AST::Or(lhs, rhs) => {
-            bool_to_number(evaluate(lhs, ctx)? != 0.0 || evaluate(rhs, ctx)? != 0.0)
-        }
+        AST::And(lhs, rhs) => evaluate(lhs, ctx)?.and(evaluate(rhs, ctx)?)?,
+        AST::Or(lhs, rhs) => evaluate(lhs, ctx)?.or(evaluate(rhs, ctx)?)?,
         AST::Brackets(inner) => evaluate(inner, ctx)?,
         AST::Assign(name, rhs) => {
             let rval = evaluate(rhs, ctx)?;
-            ctx.set_var(name, rval);
+            ctx.set_var(name, rval.clone());
             rval
         }
         AST::FunctionCall(name, args_ast) => {
@@ -380,9 +723,13 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
                 .collect::<Result<_, _>>()?;
             func.call(ctx, &args)?
         }
-        AST::IfStatement { condition, if_body, else_body } => {
+        AST::IfStatement {
+            condition,
+            if_body,
+            else_body,
+        } => {
             let condition = evaluate(condition, ctx)?;
-            if condition != 0.0 {
+            if condition.as_bool() {
                 evaluate(if_body, ctx)?;
             } else if let Some(else_body) = else_body {
                 evaluate(else_body, ctx)?;
@@ -390,7 +737,7 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
             NULL_VALUE
         }
         AST::WhileLoop { condition, body } => {
-            while evaluate(condition, ctx)? != 0.0 {
+            while evaluate(condition, ctx)?.as_bool() {
                 evaluate(body, ctx)?;
             }
             NULL_VALUE
@@ -404,24 +751,12 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
         }
     };
 
-    if !result.is_finite() {
-        return Err(EvalError::Overflow);
-    }
-
     Ok(result)
 }
 
-fn evaluate_catch_return(ast: &AST, ctx: &mut Context) -> Result<Number, EvalError> {
+fn evaluate_catch_return(ast: &AST, ctx: &mut Context) -> Result<Value, EvalError> {
     match evaluate(ast, ctx) {
         Err(EvalError::InternalControlFlow(ControlFlow::Return(val))) => Ok(val),
         other => other,
-    }
-}
-
-fn bool_to_number(b: bool) -> Number {
-    if b {
-        1.0
-    } else {
-        0.0
     }
 }

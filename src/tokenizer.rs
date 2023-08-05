@@ -9,6 +9,8 @@ pub enum Keyword {
     Else,
     While,
     Return,
+    True,
+    False,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -192,6 +194,8 @@ impl<'a> Tokenizer<'a> {
                         "else" => TokenKind::Keyword(Keyword::Else),
                         "while" => TokenKind::Keyword(Keyword::While),
                         "return" => TokenKind::Keyword(Keyword::Return),
+                        "true" => TokenKind::Keyword(Keyword::True),
+                        "false" => TokenKind::Keyword(Keyword::False),
                         _ => TokenKind::Identifier(ident),
                     }
                 }

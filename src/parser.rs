@@ -7,7 +7,8 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum AST {
     Lines(Vec<AST>),
-    Number(String),
+    NumberLiteral(String),
+    BooleanLiteral(bool),
     Variable(String),
     Add(Box<AST>, Box<AST>),
     Subtract(Box<AST>, Box<AST>),
@@ -232,8 +233,7 @@ impl<'a> Parser<'a> {
                     TokenKind::Operator(Operator::Minus) => {
                         let pos = token.pos;
                         self.next();
-                        let unary_minus_precedence =
-                            op_precedence(Operator::Minus, false, pos)?;
+                        let unary_minus_precedence = op_precedence(Operator::Minus, false, pos)?;
                         // Not `+ 1` like in the other cases so we can take multiple unary minus operators
                         // after each other
                         let rhs =
@@ -257,29 +257,32 @@ impl<'a> Parser<'a> {
                         self.expect(TokenKind::RParen)?;
                         Ok(AST::Brackets(Box::new(inner)))
                     }
-                    TokenKind::Identifier(_) | TokenKind::Number(_) => {
-                        if self.peek_nth_kind(2) == Some(&TokenKind::LParen) {
-                            self.parse_function_call()
-                        } else {
-                            let mut lhs = self.parse_identifier_or_value()?;
-                            while let Some(Token {
-                                kind: TokenKind::Operator(op),
-                                pos,
-                            }) = self.peek()
-                            {
-                                let op = *op;
-                                let precedence = op_precedence(op, true, *pos)?;
-                                if precedence >= min_precedence {
-                                    self.next();
-                                    let rhs =
-                                        self.parse_expression_with_min_precedence(precedence + 1)?;
-                                    lhs = combine_lhs_rhs(op, lhs, rhs)?;
-                                } else {
-                                    break;
-                                }
+                    TokenKind::Identifier(_)
+                        if self.peek_nth_kind(2) == Some(&TokenKind::LParen) =>
+                    {
+                        self.parse_function_call()
+                    }
+                    TokenKind::Identifier(_)
+                    | TokenKind::Number(_)
+                    | TokenKind::Keyword(Keyword::True | Keyword::False) => {
+                        let mut lhs = self.parse_identifier_or_value()?;
+                        while let Some(Token {
+                            kind: TokenKind::Operator(op),
+                            pos,
+                        }) = self.peek()
+                        {
+                            let op = *op;
+                            let precedence = op_precedence(op, true, *pos)?;
+                            if precedence >= min_precedence {
+                                self.next();
+                                let rhs =
+                                    self.parse_expression_with_min_precedence(precedence + 1)?;
+                                lhs = combine_lhs_rhs(op, lhs, rhs)?;
+                            } else {
+                                break;
                             }
-                            Ok(lhs)
                         }
+                        Ok(lhs)
                     }
                     _ => Err(ParseError::UnexpectedToken {
                         token: token.clone(),
@@ -295,7 +298,9 @@ impl<'a> Parser<'a> {
         match self.next() {
             Some(token) => match &token.kind {
                 TokenKind::Identifier(name) => Ok(AST::Variable(name.clone())),
-                TokenKind::Number(num) => Ok(AST::Number(num.clone())),
+                TokenKind::Number(num) => Ok(AST::NumberLiteral(num.clone())),
+                TokenKind::Keyword(Keyword::True) => Ok(AST::BooleanLiteral(true)),
+                TokenKind::Keyword(Keyword::False) => Ok(AST::BooleanLiteral(false)),
                 _ => Err(ParseError::UnexpectedToken {
                     token: token.clone(),
                     expected: None,
