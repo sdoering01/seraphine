@@ -67,7 +67,7 @@ impl From<io::Error> for CalcError {
 #[derive(Debug)]
 pub enum TokenizeError {
     UnexpectedChar { got: char, pos: Pos },
-    MalformedNumber { number_str: String, pos: Pos }
+    MalformedNumber { number_str: String, pos: Pos },
 }
 
 impl Display for TokenizeError {
@@ -202,7 +202,11 @@ impl Display for EvalError {
                 func_name, arg_name
             ),
             WrongType { expected, got } => {
-                write!(f, "Expected value of type '{}' but got value of type ‘{}' instead", expected, got)
+                write!(
+                    f,
+                    "Expected value of type '{}' but got value of type ‘{}' instead",
+                    expected, got
+                )
             }
             TypeError(e) => write!(f, "{}", e),
             CallStackOverflow => write!(f, "Call stack overflow (too many nested function calls)"),

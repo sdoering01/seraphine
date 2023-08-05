@@ -97,7 +97,7 @@ mod tests {
     fn eval_str(s: &str) -> Result<Value, CalcError> {
         eval_str_ctx(s, &mut Context::new())
     }
-    
+
     macro_rules! assert_eq_num {
         ( $left:expr, $right:expr ) => {
             match ($left, $right) {
@@ -312,8 +312,12 @@ mod tests {
         ctx.add_function(
             "add",
             Function::new_builtin(2, |_ctx, args| {
-                let Value::Number(arg1) = args[0] else { unreachable!() };
-                let Value::Number(arg2) = args[1] else { unreachable!() };
+                let Value::Number(arg1) = args[0] else {
+                    unreachable!()
+                };
+                let Value::Number(arg2) = args[1] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg1 + arg2))
             }),
         )

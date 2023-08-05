@@ -193,7 +193,9 @@ impl Value {
     }
 
     fn unequal(self, rhs: Self) -> Result<Value, EvalError> {
-        let Value::Bool(eq) = self.equal(rhs)? else { unreachable!() };
+        let Value::Bool(eq) = self.equal(rhs)? else {
+            unreachable!()
+        };
         Ok(Value::Bool(!eq))
     }
 
@@ -440,7 +442,9 @@ impl Context {
             "is_nan",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Bool(arg.is_nan()))
             }),
         )?;
@@ -449,7 +453,9 @@ impl Context {
             "is_infinite",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Bool(arg.is_infinite()))
             }),
         )?;
@@ -458,7 +464,9 @@ impl Context {
             "is_finite",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Bool(arg.is_finite()))
             }),
         )?;
@@ -467,7 +475,9 @@ impl Context {
             "sin",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.sin()))
             }),
         )?;
@@ -475,7 +485,9 @@ impl Context {
             "cos",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.cos()))
             }),
         )?;
@@ -483,7 +495,9 @@ impl Context {
             "tan",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.tan()))
             }),
         )?;
@@ -491,7 +505,9 @@ impl Context {
             "asin",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.asin()))
             }),
         )?;
@@ -499,7 +515,9 @@ impl Context {
             "acos",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.acos()))
             }),
         )?;
@@ -507,7 +525,9 @@ impl Context {
             "atan",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.atan()))
             }),
         )?;
@@ -516,8 +536,12 @@ impl Context {
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
                 args[1].assert_type(Type::Number)?;
-                let Value::Number(arg1) = args[0] else { unreachable!() };
-                let Value::Number(arg2) = args[1] else { unreachable!() };
+                let Value::Number(arg1) = args[0] else {
+                    unreachable!()
+                };
+                let Value::Number(arg2) = args[1] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg1.atan2(arg2)))
             }),
         )?;
@@ -525,7 +549,9 @@ impl Context {
             "tanh",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.tanh()))
             }),
         )?;
@@ -533,7 +559,9 @@ impl Context {
             "sinh",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.sinh()))
             }),
         )?;
@@ -541,7 +569,9 @@ impl Context {
             "cosh",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.cosh()))
             }),
         )?;
@@ -550,7 +580,9 @@ impl Context {
             "ln",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.ln()))
             }),
         )?;
@@ -558,7 +590,9 @@ impl Context {
             "log2",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.log2()))
             }),
         )?;
@@ -566,7 +600,9 @@ impl Context {
             "log10",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.log10()))
             }),
         )?;
@@ -575,8 +611,12 @@ impl Context {
             Function::new_builtin(2, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
                 args[1].assert_type(Type::Number)?;
-                let Value::Number(arg1) = args[0] else { unreachable!() };
-                let Value::Number(arg2) = args[1] else { unreachable!() };
+                let Value::Number(arg1) = args[0] else {
+                    unreachable!()
+                };
+                let Value::Number(arg2) = args[1] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg1.log(arg2)))
             }),
         )?;
@@ -585,7 +625,9 @@ impl Context {
             "abs",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.abs()))
             }),
         )?;
@@ -594,8 +636,12 @@ impl Context {
             Function::new_builtin(2, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
                 args[1].assert_type(Type::Number)?;
-                let Value::Number(arg1) = args[0] else { unreachable!() };
-                let Value::Number(arg2) = args[1] else { unreachable!() };
+                let Value::Number(arg1) = args[0] else {
+                    unreachable!()
+                };
+                let Value::Number(arg2) = args[1] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg1.min(arg2)))
             }),
         )?;
@@ -604,8 +650,12 @@ impl Context {
             Function::new_builtin(2, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
                 args[1].assert_type(Type::Number)?;
-                let Value::Number(arg1) = args[0] else { unreachable!() };
-                let Value::Number(arg2) = args[1] else { unreachable!() };
+                let Value::Number(arg1) = args[0] else {
+                    unreachable!()
+                };
+                let Value::Number(arg2) = args[1] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg1.max(arg2)))
             }),
         )?;
@@ -613,7 +663,9 @@ impl Context {
             "floor",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.floor()))
             }),
         )?;
@@ -621,7 +673,9 @@ impl Context {
             "ceil",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.ceil()))
             }),
         )?;
@@ -629,7 +683,9 @@ impl Context {
             "round",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.round()))
             }),
         )?;
@@ -638,7 +694,9 @@ impl Context {
             "sqrt",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.sqrt()))
             }),
         )?;
@@ -646,7 +704,9 @@ impl Context {
             "exp",
             Function::new_builtin(1, |_ctx, args| {
                 args[0].assert_type(Type::Number)?;
-                let Value::Number(arg) = args[0] else { unreachable!() };
+                let Value::Number(arg) = args[0] else {
+                    unreachable!()
+                };
                 Ok(Value::Number(arg.exp()))
             }),
         )?;
@@ -715,9 +775,7 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Value, EvalError> {
             }
             result
         }
-        AST::NumberLiteral(n) => {
-            Value::Number(*n)
-        }
+        AST::NumberLiteral(n) => Value::Number(*n),
         AST::BooleanLiteral(b) => Value::Bool(*b),
         AST::Variable(name) => ctx
             .get_var(name)

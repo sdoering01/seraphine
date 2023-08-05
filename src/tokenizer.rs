@@ -1,6 +1,6 @@
 use std::{iter::Peekable, str::Chars};
 
-use crate::{error::TokenizeError, common::Pos};
+use crate::{common::Pos, error::TokenizeError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Keyword {
@@ -126,7 +126,7 @@ impl<'a> Tokenizer<'a> {
                         }
                         self.next();
                     }
-                    continue
+                    continue;
                 }
                 '!' if self.take('=') => TokenKind::Operator(Operator::Unequal),
                 '=' if self.take('=') => TokenKind::Operator(Operator::Equal),
@@ -159,13 +159,19 @@ impl<'a> Tokenizer<'a> {
                         match c {
                             '.' => {
                                 if has_dot || has_e {
-                                    return Err(TokenizeError::UnexpectedChar{got: '.', pos: self.idx});
+                                    return Err(TokenizeError::UnexpectedChar {
+                                        got: '.',
+                                        pos: self.idx,
+                                    });
                                 }
                                 has_dot = true;
                             }
                             'e' => {
                                 if has_e {
-                                    return Err(TokenizeError::UnexpectedChar { got: 'e', pos: self.idx });
+                                    return Err(TokenizeError::UnexpectedChar {
+                                        got: 'e',
+                                        pos: self.idx,
+                                    });
                                 }
                                 has_e = true;
                             }
@@ -181,11 +187,17 @@ impl<'a> Tokenizer<'a> {
                     }
 
                     if num == "." {
-                        return Err(TokenizeError::UnexpectedChar{ got: '.', pos: self.idx - 1 });
+                        return Err(TokenizeError::UnexpectedChar {
+                            got: '.',
+                            pos: self.idx - 1,
+                        });
                     }
 
                     let Ok(n) = num.parse() else {
-                        return Err(TokenizeError::MalformedNumber { number_str: num, pos: token_start_pos })
+                        return Err(TokenizeError::MalformedNumber {
+                            number_str: num,
+                            pos: token_start_pos,
+                        });
                     };
                     TokenKind::Number(n)
                 }
@@ -216,7 +228,12 @@ impl<'a> Tokenizer<'a> {
                 // TODO: Account for \r\n
                 '\n' => TokenKind::Newline,
                 c if c.is_ascii_whitespace() => continue,
-                c => return Err(TokenizeError::UnexpectedChar{ got: c, pos: self.idx - 1 }),
+                c => {
+                    return Err(TokenizeError::UnexpectedChar {
+                        got: c,
+                        pos: self.idx - 1,
+                    })
+                }
             };
 
             let token = Token {
