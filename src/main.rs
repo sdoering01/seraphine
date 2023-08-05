@@ -157,12 +157,21 @@ mod tests {
         assert!(eval_str(".1").is_ok());
         assert!(eval_str("1.1").is_ok());
         assert!(eval_str("1.").is_ok());
+        assert!(eval_str("1e9").is_ok());
+        assert!(eval_str(".1e9").is_ok());
+        assert!(eval_str("1e-9").is_ok());
+        assert!(eval_str("42e0").is_ok());
+        assert!(eval_str("8.e2").is_ok());
 
         assert!(eval_str("2.3.4").is_err());
         assert!(eval_str("..").is_err());
         assert!(eval_str("..1").is_err());
         assert!(eval_str("1..").is_err());
         assert!(eval_str(".1.").is_err());
+        assert!(eval_str(".e9").is_err());
+        assert!(eval_str(".e").is_err());
+        assert!(eval_str("1e9e4").is_err());
+        assert!(eval_str("1e42.1").is_err());
     }
 
     #[test]

@@ -151,22 +151,33 @@ impl<'a> Tokenizer<'a> {
                 '=' => TokenKind::Equal,
                 c @ ('0'..='9' | '.') => {
                     let mut has_dot = c == '.';
+                    let mut has_e = false;
 
                     let mut num = String::new();
                     num.push(c);
                     while let Some(c) = self.peek() {
                         match c {
                             '.' => {
-                                if has_dot {
+                                if has_dot || has_e {
                                     return Err(TokenizeError::UnexpectedChar{got: '.', pos: self.idx});
                                 }
                                 has_dot = true;
+                            }
+                            'e' => {
+                                if has_e {
+                                    return Err(TokenizeError::UnexpectedChar { got: 'e', pos: self.idx });
+                                }
+                                has_e = true;
                             }
                             '0'..='9' => (),
                             _ => break,
                         }
                         let c = self.next().unwrap();
                         num.push(c);
+
+                        if c == 'e' && self.peek() == Some(&'-') {
+                            num.push(self.next().unwrap());
+                        }
                     }
 
                     if num == "." {
