@@ -41,7 +41,13 @@ impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Value::*;
         match self {
-            Number(n) => write!(f, "{}", n),
+            Number(n) => {
+                if n.is_nan() {
+                    write!(f, "nan")
+                } else {
+                    write!(f, "{}", n)
+                }
+            }
             Bool(b) => write!(f, "{}", b),
         }
     }
@@ -119,12 +125,7 @@ impl Value {
     fn divide(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
         match (self, rhs) {
-            (Number(l), Number(r)) => {
-                if r == 0.0 {
-                    return Err(EvalError::DivideByZero);
-                }
-                Ok(Number(l / r))
-            }
+            (Number(l), Number(r)) => Ok(Number(l / r)),
             (l, r) => {
                 let error = format!(
                     "Cannot divide value of type {} and value of type {}",
@@ -139,12 +140,7 @@ impl Value {
     fn modulo(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
         match (self, rhs) {
-            (Number(l), Number(r)) => {
-                if r == 0.0 {
-                    return Err(EvalError::DivideByZero);
-                }
-                Ok(Number(l % r))
-            }
+            (Number(l), Number(r)) => Ok(Number(l % r)),
             (l, r) => {
                 let error = format!(
                     "Cannot modulo value of type {} and value of type {}",
@@ -411,11 +407,43 @@ impl Context {
     fn add_standard_variables(&mut self) {
         use std::f64::consts::{E, PI};
 
+        // TODO: Scope constants to a separate namespace like `math`, so they can be used via `math.pi`
         self.set_var("pi", Value::Number(PI));
         self.set_var("e", Value::Number(E));
+        self.set_var("nan", Value::Number(f64::NAN));
+        self.set_var("inf", Value::Number(f64::INFINITY));
     }
 
     fn add_standard_functions(&mut self) -> Result<(), EvalError> {
+        // TODO: Scope functions to a separate namespace like `math`, so they can be used via
+        // `math.is_nan(42)`
+        self.add_function(
+            "is_nan",
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Bool(arg.is_nan()))
+            }),
+        )?;
+
+        self.add_function(
+            "is_infinite",
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Bool(arg.is_infinite()))
+            }),
+        )?;
+
+        self.add_function(
+            "is_finite",
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(arg) = args[0] else { unreachable!() };
+                Ok(Value::Bool(arg.is_finite()))
+            }),
+        )?;
+
         self.add_function(
             "sin",
             Function::new_builtin(1, |_ctx, args| {

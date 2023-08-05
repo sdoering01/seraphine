@@ -151,7 +151,6 @@ impl ParseError {
 
 #[derive(Debug)]
 pub enum EvalError {
-    DivideByZero,
     Overflow,
     VariableNotDefined(String),
     FunctionNotDefined(String),
@@ -178,7 +177,6 @@ impl Display for EvalError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use EvalError::*;
         match self {
-            DivideByZero => write!(f, "Divide by zero"),
             Overflow => write!(f, "Overflow"),
             VariableNotDefined(name) => write!(f, "Variable with name '{}' is not defined", name),
             FunctionNotDefined(name) => write!(f, "Function with name '{}' is not defined", name),

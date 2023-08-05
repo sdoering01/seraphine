@@ -213,7 +213,7 @@ mod tests {
     fn test_mod() {
         assert!(eval_str("2 %").is_err());
         assert!(eval_str("% 3").is_err());
-        assert!(eval_str("100 % 0").is_err());
+        assert_eq_bool!(eval_str("is_nan(100 % 0)").unwrap(), true);
         assert_eq_num!(eval_str("7 % 3").unwrap(), 1.0);
         assert_eq_num!(eval_str("7 % -3").unwrap(), 1.0);
         assert_eq_num!(eval_str("-7 % 3").unwrap(), -1.0);
@@ -265,6 +265,7 @@ mod tests {
         assert_eq_num!(eval_str("log2(1024)").unwrap(), 10.0, eps);
         assert_eq_num!(eval_str("log10(1000)").unwrap(), 3.0, eps);
         assert_eq_num!(eval_str("log(27, 3)").unwrap(), 3.0, eps);
+        assert_eq_bool!(eval_str("is_nan(log(42, -21))").unwrap(), true);
 
         assert_eq_num!(eval_str("abs(-1)").unwrap(), 1.0, eps);
         assert_eq_num!(eval_str("abs(1)").unwrap(), 1.0, eps);
@@ -277,11 +278,21 @@ mod tests {
         assert_eq_num!(eval_str("round(1.6)").unwrap(), 2.0, eps);
 
         assert_eq_num!(eval_str("sqrt(4)").unwrap(), 2.0, eps);
+        assert_eq_bool!(eval_str("is_nan(sqrt(-1))").unwrap(), true);
         assert_eq_num!(eval_str("exp(2)").unwrap(), 7.389056099, eps);
 
         assert!(eval_str("exp(true)").is_err());
 
-        // TODO: Add functions for testing floats (finite, infinite, NaN) and test them here
+        assert_eq_bool!(eval_str("is_nan(nan)").unwrap(), true);
+        assert_eq_bool!(eval_str("is_nan(inf)").unwrap(), false);
+        assert_eq_bool!(eval_str("is_nan(42)").unwrap(), false);
+        assert_eq_bool!(eval_str("is_infinite(nan)").unwrap(), false);
+        assert_eq_bool!(eval_str("is_infinite(inf)").unwrap(), true);
+        assert_eq_bool!(eval_str("is_infinite(42)").unwrap(), false);
+        assert_eq_bool!(eval_str("is_infinite(1/0)").unwrap(), true);
+        assert_eq_bool!(eval_str("is_finite(nan)").unwrap(), false);
+        assert_eq_bool!(eval_str("is_finite(inf)").unwrap(), false);
+        assert_eq_bool!(eval_str("is_finite(42)").unwrap(), true);
     }
 
     #[test]
