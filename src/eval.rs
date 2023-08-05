@@ -13,6 +13,8 @@ const CALL_STACK_SIZE_LIMIT: usize = 100;
 #[derive(Debug, Clone)]
 pub enum ControlFlow {
     Return(Value),
+    Continue,
+    Break,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -342,7 +344,16 @@ impl Function {
                 }
                 ctx.function_scope = Some(scope);
 
-                let call_result = evaluate_catch_return(body, ctx);
+                let call_result = match evaluate(body, ctx) {
+                    Err(EvalError::InternalControlFlow(ControlFlow::Return(val))) => Ok(val),
+                    Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => {
+                        Err(EvalError::ContinueOutsideOfLoop)
+                    }
+                    Err(EvalError::InternalControlFlow(ControlFlow::Break)) => {
+                        Err(EvalError::BreakOutsideOfLoop)
+                    }
+                    other => other,
+                };
                 ctx.function_scope = ctx.call_stack.pop();
                 call_result
             }
@@ -844,9 +855,20 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
         }
         Ast::WhileLoop { condition, body } => {
             while evaluate(condition, ctx)?.as_bool() {
-                evaluate(body, ctx)?;
+                match evaluate(body, ctx) {
+                    Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => continue,
+                    Err(EvalError::InternalControlFlow(ControlFlow::Break)) => break,
+                    e @ Err(_) => return e,
+                    Ok(_) => (),
+                }
             }
             NULL_VALUE
+        }
+        Ast::Continue => {
+            return Err(EvalError::InternalControlFlow(ControlFlow::Continue));
+        }
+        Ast::Break => {
+            return Err(EvalError::InternalControlFlow(ControlFlow::Break));
         }
         Ast::Return(expr) => {
             let val = match expr {
@@ -858,11 +880,4 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
     };
 
     Ok(result)
-}
-
-fn evaluate_catch_return(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
-    match evaluate(ast, ctx) {
-        Err(EvalError::InternalControlFlow(ControlFlow::Return(val))) => Ok(val),
-        other => other,
-    }
 }

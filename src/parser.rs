@@ -43,6 +43,8 @@ pub enum Ast {
         condition: Box<Ast>,
         body: Box<Ast>,
     },
+    Continue,
+    Break,
     Return(Option<Box<Ast>>),
 }
 
@@ -160,6 +162,14 @@ impl<'a> Parser<'a> {
                 TokenKind::Keyword(Keyword::Fn) => (Some(self.parse_function_definition()?), true),
                 TokenKind::Keyword(Keyword::If) => (Some(self.parse_if_statement()?), true),
                 TokenKind::Keyword(Keyword::While) => (Some(self.parse_while_loop()?), true),
+                TokenKind::Keyword(Keyword::Continue) => {
+                    self.next();
+                    (Some(Ast::Continue), true)
+                }
+                TokenKind::Keyword(Keyword::Break) => {
+                    self.next();
+                    (Some(Ast::Break), true)
+                }
                 TokenKind::Keyword(Keyword::Return) => (Some(self.parse_return()?), true),
                 TokenKind::Identifier(_) if self.peek_nth_kind(2) == Some(&TokenKind::Equal) => {
                     (Some(self.parse_assignment()?), true)

@@ -722,6 +722,76 @@ mod tests {
     }
 
     #[test]
+    fn test_continue_statement() {
+        assert!(eval_str("continue").is_err());
+        assert!(eval_str("while (true) { continue 42 }").is_err());
+
+        let code = "\
+            fn my_func() {
+                continue
+            }
+
+            a = 0
+            b = 0
+            while (a == 0) {
+                a = 1
+                my_func()
+                b = 1
+            }
+            b
+        ";
+        assert!(eval_str(code).is_err());
+
+        let code = "\
+            a = 0
+            b = 0
+            while (a < 10) {
+                a = a + 1
+                if (a % 2 == 0) {
+                    continue
+                }
+                b = b + 1
+            }
+            b";
+        assert_eq_num!(eval_str(code).unwrap(), 5.0);
+    }
+
+    #[test]
+    fn test_break_statement() {
+        assert!(eval_str("break").is_err());
+        assert!(eval_str("while (true) { break 42 }").is_err());
+
+        let code = "\
+            fn my_func() {
+                break
+            }
+
+            a = 0
+            b = 0
+            while (a == 0) {
+                a = 1
+                my_func()
+                b = 1
+            }
+            b
+        ";
+        assert!(eval_str(code).is_err());
+
+        let code = "\
+            a = 0
+            b = 0
+            while (a < 10) {
+                a = a + 1
+                if (a % 3 == 0) {
+                    break
+                }
+                b = b + 1
+            }
+            b";
+        assert_eq_num!(eval_str(code).unwrap(), 2.0);
+    }
+
+    #[test]
     fn test_return_statement() {
         assert!(eval_str("return").is_err());
         assert!(eval_str("return 1").is_err());

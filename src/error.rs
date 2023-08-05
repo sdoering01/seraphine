@@ -174,6 +174,8 @@ pub enum EvalError {
     },
     TypeError(String),
     CallStackOverflow,
+    ContinueOutsideOfLoop,
+    BreakOutsideOfLoop,
     InternalControlFlow(ControlFlow),
 }
 
@@ -212,9 +214,21 @@ impl Display for EvalError {
             }
             TypeError(e) => write!(f, "{}", e),
             CallStackOverflow => write!(f, "Call stack overflow (too many nested function calls)"),
+            ContinueOutsideOfLoop => {
+                write!(f, "Continue statement outside of loop")
+            }
+            BreakOutsideOfLoop => {
+                write!(f, "Break statement outside of loop")
+            }
             // TODO: Change this once returns are allowed outside of functions
             InternalControlFlow(ControlFlow::Return(_)) => {
                 write!(f, "Return statement outside of function")
+            }
+            InternalControlFlow(ControlFlow::Continue) => {
+                write!(f, "Continue statement outside of loop")
+            }
+            InternalControlFlow(ControlFlow::Break) => {
+                write!(f, "Break statement outside of loop")
             }
         }
     }
