@@ -633,6 +633,31 @@ mod tests {
     }
 
     #[test]
+    fn test_and_operator_short_circuit() {
+        let mut ctx = Context::new();
+        let code = "\
+            fn set_a() {
+                _set_internal_side_effect_flag()
+                true
+            }
+            false && set_a()
+        ";
+        eval_str_ctx(code, &mut ctx).unwrap();
+        assert!(!ctx._internal_side_effect_flag);
+
+        let mut ctx = Context::new();
+        let code = "\
+            fn set_a() {
+                _set_internal_side_effect_flag()
+                true
+            }
+            true && set_a()
+        ";
+        eval_str_ctx(code, &mut ctx).unwrap();
+        assert!(ctx._internal_side_effect_flag);
+    }
+
+    #[test]
     fn test_or_operator() {
         assert_eq_bool!(eval_str("0 || 0").unwrap(), false);
         assert_eq_bool!(eval_str("8 || 0").unwrap(), true);
@@ -646,6 +671,31 @@ mod tests {
         assert_eq_bool!(eval_str("false || false").unwrap(), false);
         assert_eq_bool!(eval_str("true || true").unwrap(), true);
         assert_eq_bool!(eval_str("1 || true").unwrap(), true);
+    }
+
+    #[test]
+    fn test_or_operator_short_circuit() {
+        let mut ctx = Context::new();
+        let code = "\
+            fn set_a() {
+                _set_internal_side_effect_flag()
+                true
+            }
+            false || set_a()
+        ";
+        eval_str_ctx(code, &mut ctx).unwrap();
+        assert!(ctx._internal_side_effect_flag);
+
+        let mut ctx = Context::new();
+        let code = "\
+            fn set_a() {
+                _set_internal_side_effect_flag()
+                true
+            }
+            true || set_a()
+        ";
+        eval_str_ctx(code, &mut ctx).unwrap();
+        assert!(!ctx._internal_side_effect_flag);
     }
 
     #[test]

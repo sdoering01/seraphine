@@ -257,13 +257,19 @@ impl Value {
         }
     }
 
-    fn and(self, rhs: Self) -> Result<Value, EvalError> {
-        let result = self.as_bool() && rhs.as_bool();
+    fn and(
+        self,
+        rhs_evaluator: impl FnOnce() -> Result<Self, EvalError>,
+    ) -> Result<Value, EvalError> {
+        let result = self.as_bool() && rhs_evaluator()?.as_bool();
         Ok(Value::Bool(result))
     }
 
-    fn or(self, rhs: Self) -> Result<Value, EvalError> {
-        let result = self.as_bool() || rhs.as_bool();
+    fn or(
+        self,
+        rhs_evaluator: impl FnOnce() -> Result<Self, EvalError>,
+    ) -> Result<Value, EvalError> {
+        let result = self.as_bool() || rhs_evaluator()?.as_bool();
         Ok(Value::Bool(result))
     }
 }
@@ -389,6 +395,10 @@ pub struct Context {
     global_scope: Scope,
     function_scope: Option<Scope>,
     call_stack: Vec<Scope>,
+    /// This flag is used during tests until observable side effects apart from writing to stdout
+    /// are introduced.
+    // TODO: Remove this when some form of obvservable side effects is implemented
+    pub _internal_side_effect_flag: bool,
 }
 
 impl Context {
@@ -397,6 +407,7 @@ impl Context {
             global_scope: Scope::new(),
             function_scope: None,
             call_stack: Vec::new(),
+            _internal_side_effect_flag: false,
         };
         ctx.add_standard_variables();
         ctx.add_standard_functions()
@@ -415,6 +426,14 @@ impl Context {
     }
 
     fn add_standard_functions(&mut self) -> Result<(), EvalError> {
+        self.add_function(
+            "_set_internal_side_effect_flag",
+            Function::new_builtin(0, |ctx, _args| {
+                ctx._internal_side_effect_flag = true;
+                Ok(NULL_VALUE)
+            }),
+        )?;
+
         // TODO: Scope functions to a separate namespace like `math`, so they can be used via
         // `math.is_nan(42)`
         self.add_function(
@@ -721,8 +740,8 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Value, EvalError> {
         AST::GreaterThanOrEqual(lhs, rhs) => {
             evaluate(lhs, ctx)?.greater_than_or_equal(evaluate(rhs, ctx)?)?
         }
-        AST::And(lhs, rhs) => evaluate(lhs, ctx)?.and(evaluate(rhs, ctx)?)?,
-        AST::Or(lhs, rhs) => evaluate(lhs, ctx)?.or(evaluate(rhs, ctx)?)?,
+        AST::And(lhs, rhs) => evaluate(lhs, ctx)?.and(|| evaluate(rhs, ctx))?,
+        AST::Or(lhs, rhs) => evaluate(lhs, ctx)?.or(|| evaluate(rhs, ctx))?,
         AST::Brackets(inner) => evaluate(inner, ctx)?,
         AST::Assign(name, rhs) => {
             let rval = evaluate(rhs, ctx)?;
