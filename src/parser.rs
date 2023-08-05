@@ -7,7 +7,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum AST {
     Lines(Vec<AST>),
-    NumberLiteral(String),
+    NumberLiteral(f64),
     BooleanLiteral(bool),
     Variable(String),
     Add(Box<AST>, Box<AST>),
@@ -298,7 +298,7 @@ impl<'a> Parser<'a> {
         match self.next() {
             Some(token) => match &token.kind {
                 TokenKind::Identifier(name) => Ok(AST::Variable(name.clone())),
-                TokenKind::Number(num) => Ok(AST::NumberLiteral(num.clone())),
+                TokenKind::Number(num) => Ok(AST::NumberLiteral(*num)),
                 TokenKind::Keyword(Keyword::True) => Ok(AST::BooleanLiteral(true)),
                 TokenKind::Keyword(Keyword::False) => Ok(AST::BooleanLiteral(false)),
                 _ => Err(ParseError::UnexpectedToken {

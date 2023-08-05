@@ -697,8 +697,7 @@ pub fn evaluate(ast: &AST, ctx: &mut Context) -> Result<Value, EvalError> {
             result
         }
         AST::NumberLiteral(n) => {
-            let number = n.parse().map_err(|_| EvalError::Overflow)?;
-            Value::Number(number)
+            Value::Number(*n)
         }
         AST::BooleanLiteral(b) => Value::Bool(*b),
         AST::Variable(name) => ctx

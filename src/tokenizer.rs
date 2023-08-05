@@ -47,11 +47,11 @@ pub enum Operator {
     Or,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     Keyword(Keyword),
     Identifier(String),
-    Number(String),
+    Number(f64),
     Operator(Operator),
     /// `,`
     Comma,
@@ -70,7 +70,7 @@ pub enum TokenKind {
     Eof,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub pos: Pos,
     pub kind: TokenKind,
@@ -173,7 +173,10 @@ impl<'a> Tokenizer<'a> {
                         return Err(TokenizeError::UnexpectedChar{ got: '.', pos: self.idx - 1 });
                     }
 
-                    TokenKind::Number(num)
+                    let Ok(n) = num.parse() else {
+                        return Err(TokenizeError::MalformedNumber { number_str: num, pos: token_start_pos })
+                    };
+                    TokenKind::Number(n)
                 }
                 c @ ('a'..='z' | 'A'..='Z' | '_') => {
                     let mut ident = String::new();

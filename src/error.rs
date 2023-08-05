@@ -67,6 +67,7 @@ impl From<io::Error> for CalcError {
 #[derive(Debug)]
 pub enum TokenizeError {
     UnexpectedChar { got: char, pos: Pos },
+    MalformedNumber { number_str: String, pos: Pos }
 }
 
 impl Display for TokenizeError {
@@ -74,6 +75,7 @@ impl Display for TokenizeError {
         use TokenizeError::*;
         match self {
             UnexpectedChar { got, .. } => write!(f, "Unexpected char '{}'", got),
+            MalformedNumber { number_str, .. } => write!(f, "Malformed number {}", number_str),
         }
     }
 }
@@ -83,6 +85,7 @@ impl TokenizeError {
         let error = self.to_string();
         match self {
             Self::UnexpectedChar { pos, .. } => format_error(error, input, file_name, *pos),
+            Self::MalformedNumber { pos, .. } => format_error(error, input, file_name, *pos),
         }
     }
 }
@@ -151,7 +154,6 @@ impl ParseError {
 
 #[derive(Debug)]
 pub enum EvalError {
-    Overflow,
     VariableNotDefined(String),
     FunctionNotDefined(String),
     FunctionAlreadyDefined(String),
@@ -177,7 +179,6 @@ impl Display for EvalError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use EvalError::*;
         match self {
-            Overflow => write!(f, "Overflow"),
             VariableNotDefined(name) => write!(f, "Variable with name '{}' is not defined", name),
             FunctionNotDefined(name) => write!(f, "Function with name '{}' is not defined", name),
             FunctionAlreadyDefined(name) => {
