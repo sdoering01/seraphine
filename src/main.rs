@@ -958,4 +958,15 @@ mod tests {
         assert!(eval_str("is_nan(parse_number(42))").is_err());
         assert!(eval_str("is_nan(parse_number(true))").is_err());
     }
+
+    #[test]
+    fn test_to_string() {
+        assert_eq_str!(eval_str("to_string(123)").unwrap(), "123");
+        assert_eq_str!(eval_str("to_string(true)").unwrap(), "true");
+        assert_eq_str!(eval_str("to_string(123)").unwrap(), "123");
+        assert_eq_str!(eval_str("to_string(nan)").unwrap(), "nan");
+        assert_eq_str!(eval_str("to_string(inf)").unwrap(), "inf");
+        assert_eq_str!(eval_str(r#"to_string("")"#).unwrap(), "");
+        assert_eq_str!(eval_str(r#"to_string("abc")"#).unwrap(), "abc");
+    }
 }

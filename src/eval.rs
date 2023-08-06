@@ -77,6 +77,13 @@ impl Value {
         Ok(())
     }
 
+    fn to_string(&self) -> String {
+        match self {
+            Value::String(s) => s.clone(),
+            other => ToString::to_string(&other),
+        }
+    }
+
     fn as_bool(&self) -> bool {
         match self {
             Value::Number(n) => *n != 0.0,
@@ -463,6 +470,11 @@ impl Context {
                 ctx._internal_side_effect_flag = true;
                 Ok(NULL_VALUE)
             }),
+        )?;
+
+        self.add_function(
+            "to_string",
+            Function::new_builtin(1, |_ctx, args| Ok(Value::String(args[0].to_string()))),
         )?;
 
         self.add_function(
