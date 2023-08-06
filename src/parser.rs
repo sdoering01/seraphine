@@ -9,6 +9,7 @@ pub enum Ast {
     Lines(Vec<Ast>),
     NumberLiteral(f64),
     BooleanLiteral(bool),
+    StringLiteral(String),
     Variable(String),
     Add(Box<Ast>, Box<Ast>),
     Subtract(Box<Ast>, Box<Ast>),
@@ -274,6 +275,7 @@ impl<'a> Parser<'a> {
                     }
                     TokenKind::Identifier(_)
                     | TokenKind::Number(_)
+                    | TokenKind::String(_)
                     | TokenKind::Keyword(Keyword::True | Keyword::False) => {
                         let mut lhs = self.parse_identifier_or_value()?;
                         while let Some(Token {
@@ -309,6 +311,7 @@ impl<'a> Parser<'a> {
             Some(token) => match &token.kind {
                 TokenKind::Identifier(name) => Ok(Ast::Variable(name.clone())),
                 TokenKind::Number(num) => Ok(Ast::NumberLiteral(*num)),
+                TokenKind::String(str) => Ok(Ast::StringLiteral(str.clone())),
                 TokenKind::Keyword(Keyword::True) => Ok(Ast::BooleanLiteral(true)),
                 TokenKind::Keyword(Keyword::False) => Ok(Ast::BooleanLiteral(false)),
                 _ => Err(ParseError::UnexpectedToken {

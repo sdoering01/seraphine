@@ -54,6 +54,7 @@ pub enum TokenKind {
     Keyword(Keyword),
     Identifier(String),
     Number(f64),
+    String(String),
     Operator(Operator),
     /// `,`
     Comma,
@@ -202,6 +203,43 @@ impl<'a> Tokenizer<'a> {
                         });
                     };
                     TokenKind::Number(n)
+                }
+                '"' => {
+                    let mut str = String::new();
+                    let mut terminated = false;
+                    while let Some(c) = self.next() {
+                        match c {
+                            '"' => {
+                                terminated = true;
+                                break;
+                            }
+                            '\n' => break,
+                            '\\' => match self.next() {
+                                Some('"') => str.push('"'),
+                                Some('n') => str.push('\n'),
+                                Some('r') => str.push('\r'),
+                                Some('t') => str.push('\t'),
+                                Some('\\') => str.push('\\'),
+                                Some('0') => str.push('\0'),
+                                Some(c) => {
+                                    return Err(TokenizeError::UnexpectedChar {
+                                        got: c,
+                                        pos: self.idx - 1,
+                                    })
+                                }
+                                None => break,
+                            },
+                            _ => str.push(c),
+                        }
+                    }
+
+                    if !terminated {
+                        return Err(TokenizeError::UnterminatedString {
+                            pos: token_start_pos,
+                        });
+                    }
+
+                    TokenKind::String(str)
                 }
                 c @ ('a'..='z' | 'A'..='Z' | '_') => {
                     let mut ident = String::new();

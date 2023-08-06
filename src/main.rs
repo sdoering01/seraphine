@@ -134,6 +134,19 @@ mod tests {
         };
     }
 
+    macro_rules! assert_eq_str {
+        ( $left:expr, $right:expr ) => {
+            match ($left, $right) {
+                (value, expected) => {
+                    let $crate::eval::Value::String(got) = value else {
+                        ::std::panic!("value is not a string");
+                    };
+                    ::std::assert_eq!(got, expected);
+                }
+            }
+        };
+    }
+
     #[test]
     fn test_eval_str() {
         assert!(eval_str("").is_ok());
@@ -879,5 +892,58 @@ mod tests {
     fn test_boolean_literals() {
         assert_eq_bool!(eval_str("true").unwrap(), true);
         assert_eq_bool!(eval_str("false").unwrap(), false);
+    }
+
+    #[test]
+    fn test_string_literals() {
+        assert_eq_str!(eval_str(r#""abc""#).unwrap(), "abc");
+        assert_eq_str!(eval_str(r#""123""#).unwrap(), "123");
+        assert_eq_str!(
+            eval_str(r#""This is a sentence.""#).unwrap(),
+            "This is a sentence."
+        );
+        assert_eq_str!(eval_str(r#""""#).unwrap(), "");
+        assert_eq_str!(eval_str(r#""\"\n\t\r\0\\""#).unwrap(), "\"\n\t\r\0\\");
+
+        assert!(eval_str(r#"""#).is_err());
+        assert!(eval_str(r#""abc"#).is_err());
+        assert!(eval_str(r#"abc""#).is_err());
+
+        let code = r#"\
+            s = "abc
+            "
+        "#;
+        assert!(eval_str(code).is_err());
+
+        let code = r#"\
+            s = "abc
+
+        "#;
+        assert!(eval_str(code).is_err());
+    }
+
+    #[test]
+    fn test_string_boolean_coercion() {
+        assert_eq_bool!(eval_str(r#"!!"abc""#).unwrap(), true);
+        assert_eq_bool!(eval_str(r#"!!"\0""#).unwrap(), true);
+        assert_eq_bool!(eval_str(r#"!!"""#).unwrap(), false);
+    }
+
+    #[test]
+    fn test_string_concatenation() {
+        assert_eq_str!(eval_str(r#""abc" + "def""#).unwrap(), "abcdef");
+
+        let mut ctx = Context::new();
+        let code = r#"
+            a = "abc"
+            b = "def"
+            c = a + b
+        "#;
+        eval_str_ctx(code, &mut ctx).unwrap();
+        assert_eq_str!(ctx.get_var("a").unwrap(), "abc");
+        assert_eq_str!(ctx.get_var("b").unwrap(), "def");
+        assert_eq_str!(ctx.get_var("c").unwrap(), "abcdef");
+        assert_eq_str!(eval_str_ctx(r#"a + "def""#, &mut ctx).unwrap(), "abcdef");
+        assert_eq_str!(eval_str_ctx(r#""abc" + b"#, &mut ctx).unwrap(), "abcdef");
     }
 }

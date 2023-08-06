@@ -21,6 +21,7 @@ pub enum ControlFlow {
 pub enum Type {
     Number,
     Bool,
+    String,
 }
 
 impl Display for Type {
@@ -29,6 +30,7 @@ impl Display for Type {
         match self {
             Number => write!(f, "number"),
             Bool => write!(f, "bool"),
+            String => write!(f, "string"),
         }
     }
 }
@@ -37,6 +39,7 @@ impl Display for Type {
 pub enum Value {
     Number(f64),
     Bool(bool),
+    String(String),
 }
 
 impl Display for Value {
@@ -51,6 +54,7 @@ impl Display for Value {
                 }
             }
             Bool(b) => write!(f, "{}", b),
+            String(s) => write!(f, r#""{}""#, s),
         }
     }
 }
@@ -61,6 +65,7 @@ impl Value {
         match self {
             Number(..) => Type::Number,
             Bool(..) => Type::Bool,
+            String(..) => Type::String,
         }
     }
 
@@ -76,6 +81,7 @@ impl Value {
         match self {
             Value::Number(n) => *n != 0.0,
             Value::Bool(b) => *b,
+            Value::String(s) => !s.is_empty(),
         }
     }
 
@@ -83,6 +89,7 @@ impl Value {
         use Value::*;
         match (self, rhs) {
             (Number(l), Number(r)) => Ok(Number(l + r)),
+            (String(l), String(r)) => Ok(String(l + &r)),
             (l, r) => {
                 let error = format!(
                     "Cannot add value of type {} and value of type {}",
@@ -189,6 +196,7 @@ impl Value {
         let eq = match (self, rhs) {
             (Number(l), Number(r)) => l == r,
             (Bool(l), Bool(r)) => l == r,
+            (String(l), String(r)) => l == r,
             _ => false,
         };
         Ok(Bool(eq))
@@ -203,62 +211,70 @@ impl Value {
 
     fn less_than(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
-        match (self, rhs) {
-            (Number(l), Number(r)) => Ok(Bool(l < r)),
+        let lt = match (self, rhs) {
+            (Number(l), Number(r)) => l < r,
+            (String(l), String(r)) => l < r,
             (l, r) => {
                 let error = format!(
                     "Cannot compare value of type {} and value of type {}",
                     l.get_type(),
                     r.get_type()
                 );
-                Err(EvalError::TypeError(error))
+                return Err(EvalError::TypeError(error));
             }
-        }
+        };
+        Ok(Bool(lt))
     }
 
     fn greater_than(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
-        match (self, rhs) {
-            (Number(l), Number(r)) => Ok(Bool(l > r)),
+        let gt = match (self, rhs) {
+            (Number(l), Number(r)) => l > r,
+            (String(l), String(r)) => l > r,
             (l, r) => {
                 let error = format!(
                     "Cannot compare value of type {} and value of type {}",
                     l.get_type(),
                     r.get_type()
                 );
-                Err(EvalError::TypeError(error))
+                return Err(EvalError::TypeError(error));
             }
-        }
+        };
+        Ok(Bool(gt))
     }
 
     fn less_than_or_equal(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
-        match (self, rhs) {
-            (Number(l), Number(r)) => Ok(Bool(l <= r)),
+        let le = match (self, rhs) {
+            (Number(l), Number(r)) => l <= r,
+            (String(l), String(r)) => l <= r,
             (l, r) => {
                 let error = format!(
                     "Cannot compare value of type {} and value of type {}",
                     l.get_type(),
                     r.get_type()
                 );
-                Err(EvalError::TypeError(error))
+                return Err(EvalError::TypeError(error));
             }
-        }
+        };
+        Ok(Bool(le))
     }
 
     fn greater_than_or_equal(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
-        match (self, rhs) {
-            (Number(l), Number(r)) => Ok(Bool(l >= r)),
+        let ge = match (self, rhs) {
+            (Number(l), Number(r)) => l >= r,
+            (String(l), String(r)) => l >= r,
             (l, r) => {
                 let error = format!(
                     "Cannot compare value of type {} and value of type {}",
                     l.get_type(),
                     r.get_type()
                 );
-                Err(EvalError::TypeError(error))
+                return Err(EvalError::TypeError(error));
             }
-        }
+        };
+        Ok(Bool(ge))
     }
 
     fn and(
@@ -790,6 +806,7 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
         }
         Ast::NumberLiteral(n) => Value::Number(*n),
         Ast::BooleanLiteral(b) => Value::Bool(*b),
+        Ast::StringLiteral(s) => Value::String(s.clone()),
         Ast::Variable(name) => ctx
             .get_var(name)
             .ok_or_else(|| EvalError::VariableNotDefined(name.clone()))?,

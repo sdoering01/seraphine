@@ -70,6 +70,7 @@ impl From<io::Error> for CalcError {
 pub enum TokenizeError {
     UnexpectedChar { got: char, pos: Pos },
     MalformedNumber { number_str: String, pos: Pos },
+    UnterminatedString { pos: Pos },
 }
 
 impl Display for TokenizeError {
@@ -78,6 +79,7 @@ impl Display for TokenizeError {
         match self {
             UnexpectedChar { got, .. } => write!(f, "Unexpected char {:?}", got),
             MalformedNumber { number_str, .. } => write!(f, "Malformed number {}", number_str),
+            UnterminatedString { .. } => write!(f, "Unterminated string"),
         }
     }
 }
@@ -88,6 +90,7 @@ impl TokenizeError {
         match self {
             Self::UnexpectedChar { pos, .. } => format_error(error, input, file_name, *pos),
             Self::MalformedNumber { pos, .. } => format_error(error, input, file_name, *pos),
+            Self::UnterminatedString { pos } => format_error(error, input, file_name, *pos),
         }
     }
 }
