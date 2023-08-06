@@ -76,7 +76,7 @@ impl Display for TokenizeError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use TokenizeError::*;
         match self {
-            UnexpectedChar { got, .. } => write!(f, "Unexpected char '{}'", got),
+            UnexpectedChar { got, .. } => write!(f, "Unexpected char {:?}", got),
             MalformedNumber { number_str, .. } => write!(f, "Malformed number {}", number_str),
         }
     }
