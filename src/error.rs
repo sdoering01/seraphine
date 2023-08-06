@@ -56,7 +56,10 @@ impl From<ParseError> for CalcError {
 
 impl From<EvalError> for CalcError {
     fn from(e: EvalError) -> Self {
-        Self::EvalError(e)
+        match e {
+            EvalError::Io(e) => Self::IoError(e),
+            _ => Self::EvalError(e),
+        }
     }
 }
 
@@ -180,6 +183,13 @@ pub enum EvalError {
     ContinueOutsideOfLoop,
     BreakOutsideOfLoop,
     InternalControlFlow(ControlFlow),
+    Io(io::Error),
+}
+
+impl From<io::Error> for EvalError {
+    fn from(e: io::Error) -> Self {
+        Self::Io(e)
+    }
 }
 
 impl Display for EvalError {
@@ -232,6 +242,9 @@ impl Display for EvalError {
             }
             InternalControlFlow(ControlFlow::Break) => {
                 write!(f, "Break statement outside of loop")
+            }
+            Io(e) => {
+                write!(f, "IO error: {}", e)
             }
         }
     }

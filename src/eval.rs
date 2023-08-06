@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
+    io::{stderr, stdin, stdout, BufRead, BufReader, Read, Write},
     rc::Rc,
 };
 
@@ -77,10 +78,10 @@ impl Value {
         Ok(())
     }
 
-    fn to_string(&self) -> String {
+    fn convert_to_string(&self) -> String {
         match self {
             Value::String(s) => s.clone(),
-            other => ToString::to_string(&other),
+            other => other.to_string(),
         }
     }
 
@@ -429,28 +430,111 @@ impl Scope {
     }
 }
 
+pub struct ContextBuilder {
+    stdin: Box<dyn Read>,
+    stdout: Box<dyn Write>,
+    stderr: Box<dyn Write>,
+    standard_variables: bool,
+    standard_functions: bool,
+}
+
+impl Default for ContextBuilder {
+    fn default() -> Self {
+        Self {
+            stdin: Box::new(stdin()),
+            stdout: Box::new(stdout()),
+            stderr: Box::new(stderr()),
+            standard_variables: true,
+            standard_functions: true,
+        }
+    }
+}
+
+impl ContextBuilder {
+    pub fn build(self) -> Context {
+        let mut ctx = Context {
+            global_scope: Scope::new(),
+            function_scope: None,
+            call_stack: Vec::new(),
+            stdin: BufReader::new(self.stdin),
+            stdout: self.stdout,
+            stderr: self.stderr,
+            _internal_side_effect_flag: false,
+        };
+
+        if self.standard_variables {
+            ctx.add_standard_variables();
+        }
+        if self.standard_functions {
+            ctx.add_standard_functions()
+                .expect("Failed to add standard functions to context");
+        }
+
+        ctx
+    }
+
+    // TODO: Remove `#[allow(unused)]` once this is used outside of tests
+    #[allow(unused)]
+    pub fn stdin(mut self, stdin: impl Read + 'static) -> Self {
+        self.stdin = Box::new(stdin);
+        self
+    }
+
+    // TODO: Remove `#[allow(unused)]` once this is used outside of tests
+    #[allow(unused)]
+    pub fn stdout(mut self, stdout: impl Write + 'static) -> Self {
+        self.stdout = Box::new(stdout);
+        self
+    }
+
+    // TODO: Remove `#[allow(unused)]` once this is used outside of tests
+    #[allow(unused)]
+    pub fn stderr(mut self, stderr: impl Write + 'static) -> Self {
+        self.stderr = Box::new(stderr);
+        self
+    }
+
+    // TODO: Remove `#[allow(unused)]` once this is used outside of tests
+    #[allow(unused)]
+    pub fn standard_variables(mut self, b: bool) -> Self {
+        self.standard_variables = b;
+        self
+    }
+
+    // TODO: Remove `#[allow(unused)]` once this is used outside of tests
+    #[allow(unused)]
+    pub fn standard_functions(mut self, b: bool) -> Self {
+        self.standard_functions = b;
+        self
+    }
+}
+
 pub struct Context {
     global_scope: Scope,
     function_scope: Option<Scope>,
     call_stack: Vec<Scope>,
+    stdin: BufReader<Box<dyn Read>>,
+    stdout: Box<dyn Write>,
+    stderr: Box<dyn Write>,
     /// This flag is used during tests until observable side effects apart from writing to stdout
     /// are introduced.
     // TODO: Remove this when some form of obvservable side effects is implemented
     pub _internal_side_effect_flag: bool,
 }
 
+impl Default for Context {
+    fn default() -> Self {
+        Self::builder().build()
+    }
+}
+
 impl Context {
     pub fn new() -> Self {
-        let mut ctx = Self {
-            global_scope: Scope::new(),
-            function_scope: None,
-            call_stack: Vec::new(),
-            _internal_side_effect_flag: false,
-        };
-        ctx.add_standard_variables();
-        ctx.add_standard_functions()
-            .expect("Failed to add standard functions");
-        ctx
+        Self::default()
+    }
+
+    pub fn builder() -> ContextBuilder {
+        ContextBuilder::default()
     }
 
     fn add_standard_variables(&mut self) {
@@ -473,8 +557,58 @@ impl Context {
         )?;
 
         self.add_function(
+            "print",
+            Function::new_builtin(1, |ctx, args| {
+                // TODO: Accept any amount of variables
+                write!(ctx.stdout, "{}", args[0].convert_to_string())?;
+                ctx.stdout.flush()?;
+                Ok(NULL_VALUE)
+            }),
+        )?;
+
+        self.add_function(
+            "println",
+            Function::new_builtin(1, |ctx, args| {
+                // TODO: Accept any amount of variables
+                writeln!(ctx.stdout, "{}", args[0].convert_to_string())?;
+                Ok(NULL_VALUE)
+            }),
+        )?;
+
+        self.add_function(
+            "eprint",
+            Function::new_builtin(1, |ctx, args| {
+                // TODO: Accept any amount of variables
+                write!(ctx.stderr, "{}", args[0].convert_to_string())?;
+                ctx.stderr.flush()?;
+                Ok(NULL_VALUE)
+            }),
+        )?;
+
+        self.add_function(
+            "eprintln",
+            Function::new_builtin(1, |ctx, args| {
+                // TODO: Accept any amount of variables
+                writeln!(ctx.stderr, "{}", args[0].convert_to_string())?;
+                Ok(NULL_VALUE)
+            }),
+        )?;
+
+        self.add_function(
+            "read_line",
+            Function::new_builtin(0, |ctx, _args| {
+                let mut str = String::new();
+                ctx.stdin.read_line(&mut str)?;
+                str.pop();
+                Ok(Value::String(str))
+            }),
+        )?;
+
+        self.add_function(
             "to_string",
-            Function::new_builtin(1, |_ctx, args| Ok(Value::String(args[0].to_string()))),
+            Function::new_builtin(1, |_ctx, args| {
+                Ok(Value::String(args[0].convert_to_string()))
+            }),
         )?;
 
         self.add_function(

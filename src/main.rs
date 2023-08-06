@@ -1,8 +1,9 @@
-use std::{io, process};
+use std::process;
 
 mod common;
 mod error;
 mod eval;
+mod io;
 mod parser;
 mod tokenizer;
 
@@ -44,7 +45,7 @@ fn eval_file(path: &str) -> Result<(), CalcError> {
 fn repl() {
     // TODO: Implement proper multi-line support
     let mut ctx = Context::new();
-    let _stdout = io::stdout();
+    let _stdout = std::io::stdout();
     let mut input = String::new();
 
     loop {
@@ -91,6 +92,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+
     use super::*;
     use eval::Value;
 
@@ -968,5 +971,56 @@ mod tests {
         assert_eq_str!(eval_str("to_string(inf)").unwrap(), "inf");
         assert_eq_str!(eval_str(r#"to_string("")"#).unwrap(), "");
         assert_eq_str!(eval_str(r#"to_string("abc")"#).unwrap(), "abc");
+    }
+
+    #[test]
+    fn test_print() {
+        let (mut stdout_reader, stdout_writer) = io::create_channel_reader_writer();
+        let (mut stderr_reader, stderr_writer) = io::create_channel_reader_writer();
+        let mut ctx = Context::builder()
+            .stdout(stdout_writer)
+            .stderr(stderr_writer)
+            .build();
+
+        eval_str_ctx(r#"println("Hello, world!")"#, &mut ctx).unwrap();
+        assert_eq!(stdout_reader.read_available_to_string(), "Hello, world!\n");
+        assert_eq!(stderr_reader.read_available_to_string(), "");
+
+        eval_str_ctx(r#"eprintln("Goodbye, world!")"#, &mut ctx).unwrap();
+        assert_eq!(stdout_reader.read_available_to_string(), "");
+        assert_eq!(
+            stderr_reader.read_available_to_string(),
+            "Goodbye, world!\n"
+        );
+
+        eval_str_ctx(r#"print(42)"#, &mut ctx).unwrap();
+        assert_eq!(stdout_reader.read_available_to_string(), "42");
+        assert_eq!(stderr_reader.read_available_to_string(), "");
+
+        eval_str_ctx(r#"eprint(false)"#, &mut ctx).unwrap();
+        assert_eq!(stdout_reader.read_available_to_string(), "");
+        assert_eq!(stderr_reader.read_available_to_string(), "false");
+    }
+
+    #[test]
+    fn test_read_line() {
+        let (reader, mut writer) = io::create_channel_reader_writer();
+        let mut ctx = Context::builder().stdin(reader).build();
+
+        writer.write_all(b"This is some input\n").unwrap();
+        assert_eq_str!(
+            eval_str_ctx("read_line()", &mut ctx).unwrap(),
+            "This is some input"
+        );
+
+        writer.write_all(b"\n").unwrap();
+        assert_eq_str!(eval_str_ctx("read_line()", &mut ctx).unwrap(), "");
+
+        writer.write_all(b"first line\nsecond line\n").unwrap();
+        assert_eq_str!(eval_str_ctx("read_line()", &mut ctx).unwrap(), "first line");
+        assert_eq_str!(
+            eval_str_ctx("read_line()", &mut ctx).unwrap(),
+            "second line"
+        );
     }
 }
