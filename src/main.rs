@@ -946,4 +946,16 @@ mod tests {
         assert_eq_str!(eval_str_ctx(r#"a + "def""#, &mut ctx).unwrap(), "abcdef");
         assert_eq_str!(eval_str_ctx(r#""abc" + b"#, &mut ctx).unwrap(), "abcdef");
     }
+
+    #[test]
+    fn test_parse_number() {
+        assert_eq_num!(eval_str(r#"parse_number("1e9")"#).unwrap(), 1e9);
+        assert_eq_num!(eval_str(r#"parse_number("-42.1")"#).unwrap(), -42.1);
+        assert_eq_bool!(eval_str(r#"is_nan(parse_number(""))"#).unwrap(), true);
+        assert_eq_bool!(eval_str(r#"is_nan(parse_number("abc"))"#).unwrap(), true);
+
+        assert!(eval_str("is_nan(parse_number())").is_err());
+        assert!(eval_str("is_nan(parse_number(42))").is_err());
+        assert!(eval_str("is_nan(parse_number(true))").is_err());
+    }
 }

@@ -465,6 +465,18 @@ impl Context {
             }),
         )?;
 
+        self.add_function(
+            "parse_number",
+            Function::new_builtin(1, |_ctx, args| {
+                args[0].assert_type(Type::String)?;
+                let Value::String(ref arg) = args[0] else {
+                    unreachable!()
+                };
+                let num = arg.parse().unwrap_or(f64::NAN);
+                Ok(Value::Number(num))
+            }),
+        )?;
+
         // TODO: Scope functions to a separate namespace like `math`, so they can be used via
         // `math.is_nan(42)`
         self.add_function(
