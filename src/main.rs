@@ -327,7 +327,7 @@ mod tests {
         let mut ctx = Context::new();
         ctx.add_function(
             "add",
-            Function::new_builtin(2, |_ctx, args| {
+            Function::new_builtin(Some(2), |_ctx, args| {
                 let Value::Number(arg1) = args[0] else {
                     unreachable!()
                 };
@@ -982,9 +982,24 @@ mod tests {
             .stderr(stderr_writer)
             .build();
 
+        eval_str_ctx(r#"println()"#, &mut ctx).unwrap();
+        assert_eq!(stdout_reader.read_available_to_string(), "\n");
+        assert_eq!(stderr_reader.read_available_to_string(), "");
+
         eval_str_ctx(r#"println("Hello, world!")"#, &mut ctx).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "Hello, world!\n");
         assert_eq!(stderr_reader.read_available_to_string(), "");
+
+        eval_str_ctx(r#"println("Hello", ",", "world", "!")"#, &mut ctx).unwrap();
+        assert_eq!(
+            stdout_reader.read_available_to_string(),
+            "Hello , world !\n"
+        );
+        assert_eq!(stderr_reader.read_available_to_string(), "");
+
+        eval_str_ctx(r#"eprintln()"#, &mut ctx).unwrap();
+        assert_eq!(stdout_reader.read_available_to_string(), "");
+        assert_eq!(stderr_reader.read_available_to_string(), "\n");
 
         eval_str_ctx(r#"eprintln("Goodbye, world!")"#, &mut ctx).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "");
@@ -993,13 +1008,36 @@ mod tests {
             "Goodbye, world!\n"
         );
 
+        eval_str_ctx(r#"eprintln("Goodbye", ",", "world", "!")"#, &mut ctx).unwrap();
+        assert_eq!(stdout_reader.read_available_to_string(), "");
+        assert_eq!(
+            stderr_reader.read_available_to_string(),
+            "Goodbye , world !\n"
+        );
+
+        eval_str_ctx(r#"print()"#, &mut ctx).unwrap();
+        assert_eq!(stdout_reader.read_available_to_string(), "");
+        assert_eq!(stderr_reader.read_available_to_string(), "");
+
         eval_str_ctx(r#"print(42)"#, &mut ctx).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "42");
+        assert_eq!(stderr_reader.read_available_to_string(), "");
+
+        eval_str_ctx(r#"print(1, 1, 2, 3, 5)"#, &mut ctx).unwrap();
+        assert_eq!(stdout_reader.read_available_to_string(), "1 1 2 3 5");
+        assert_eq!(stderr_reader.read_available_to_string(), "");
+
+        eval_str_ctx(r#"eprint()"#, &mut ctx).unwrap();
+        assert_eq!(stdout_reader.read_available_to_string(), "");
         assert_eq!(stderr_reader.read_available_to_string(), "");
 
         eval_str_ctx(r#"eprint(false)"#, &mut ctx).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "");
         assert_eq!(stderr_reader.read_available_to_string(), "false");
+
+        eval_str_ctx(r#"eprint(2, 3, 5, 7, 11, true)"#, &mut ctx).unwrap();
+        assert_eq!(stdout_reader.read_available_to_string(), "");
+        assert_eq!(stderr_reader.read_available_to_string(), "2 3 5 7 11 true");
     }
 
     #[test]
