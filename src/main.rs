@@ -322,22 +322,16 @@ mod tests {
 
     #[test]
     fn test_functions() {
-        use crate::eval::Function;
-
         let mut ctx = Context::new();
-        ctx.add_function(
-            "add",
-            Function::new_builtin(Some(2), |_ctx, args| {
-                let Value::Number(arg1) = args[0] else {
-                    unreachable!()
-                };
-                let Value::Number(arg2) = args[1] else {
-                    unreachable!()
-                };
-                Ok(Value::Number(arg1 + arg2))
-            }),
-        )
-        .unwrap();
+        ctx.add_builtin_function("add", Some(2), |_ctx, args| {
+            let Value::Number(arg1) = args[0] else {
+                unreachable!()
+            };
+            let Value::Number(arg2) = args[1] else {
+                unreachable!()
+            };
+            Ok(Value::Number(arg1 + arg2))
+        });
 
         assert!(eval_str_ctx("add()", &mut ctx).is_err());
         assert!(eval_str_ctx("add(1)", &mut ctx).is_err());
@@ -1060,5 +1054,74 @@ mod tests {
             eval_str_ctx("read_line()", &mut ctx).unwrap(),
             "second line"
         );
+    }
+
+    #[test]
+    fn test_named_functions_are_not_expressions() {
+        assert!(eval_str("my_func = fn my_func() { }").is_err());
+        assert!(eval_str("print(fn my_func() { })").is_err());
+    }
+
+    #[test]
+    fn test_unnamed_functions() {
+        let code = "\
+            fn apply_twice(func, val) {
+                func(func(val))
+            }
+
+            apply_twice(fn (num) { 2 * num }, 7)
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 28.0);
+
+        let code = r#"
+            str_concat = fn (s) {
+                s + s
+            }
+            str_concat("abc")
+        "#;
+        assert_eq_str!(eval_str(code).unwrap(), "abcabc");
+
+        assert_eq_bool!(
+            eval_str("fn (a, b) { (a && !b) || (!a && b) }(true, true)").unwrap(),
+            false
+        );
+        assert_eq_bool!(
+            eval_str("(fn (a, b) { (a && !b) || (!a && b) })(true, true)").unwrap(),
+            false
+        );
+    }
+
+    #[test]
+    fn test_function_values() {
+        let code = "\
+            fn add(a, b) {
+                a + b
+            }
+
+            my_add = add
+            my_add(2, 3)
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 5.0);
+
+        let code = "\
+            fn apply_both(f1, f2, v) {
+                f2(f1(v))
+            }
+
+            fn double (num) {
+                2 * num
+            }
+
+            apply_both(double, fn (num) { num ^ 2 }, 4)
+        ";
+
+        assert_eq_num!(eval_str(code).unwrap(), 64.0);
+
+        let code = "\
+            fn (a, b) {
+                a + b
+            }
+        ";
+        assert!(eval_str(code).is_ok());
     }
 }

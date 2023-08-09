@@ -163,15 +163,13 @@ impl ParseError {
 #[derive(Debug)]
 pub enum EvalError {
     VariableNotDefined(String),
-    FunctionNotDefined(String),
-    FunctionAlreadyDefined(String),
     FunctionWrongArgAmount {
-        name: String,
+        name: Option<String>,
         expected: usize,
         got: usize,
     },
     DuplicateArgName {
-        func_name: String,
+        func_name: Option<String>,
         arg_name: String,
     },
     WrongType {
@@ -197,27 +195,31 @@ impl Display for EvalError {
         use EvalError::*;
         match self {
             VariableNotDefined(name) => write!(f, "Variable with name '{}' is not defined", name),
-            FunctionNotDefined(name) => write!(f, "Function with name '{}' is not defined", name),
-            FunctionAlreadyDefined(name) => {
-                write!(f, "Function with name '{}' is already defined", name)
-            }
             FunctionWrongArgAmount {
                 name,
                 expected,
                 got,
-            } => write!(
-                f,
-                "Function '{}' was called with {} arguments but expects {}",
-                name, got, expected
-            ),
+            } => {
+                match name {
+                    Some(name) => write!(f, "Function '{}'", name)?,
+                    None => write!(f, "Unnamed function")?,
+                };
+                write!(
+                    f,
+                    " was called with {} arguments but expects {}",
+                    got, expected
+                )
+            }
             DuplicateArgName {
                 func_name,
                 arg_name,
-            } => write!(
-                f,
-                "Function '{}' has duplicate argument name '{}'",
-                func_name, arg_name
-            ),
+            } => {
+                match func_name {
+                    Some(name) => write!(f, "Function '{}'", name)?,
+                    None => write!(f, "Unnamed function")?,
+                };
+                write!(f, " has duplicate argument name '{}'", arg_name)
+            }
             WrongType { expected, got } => {
                 write!(
                     f,

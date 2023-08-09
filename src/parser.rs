@@ -29,9 +29,16 @@ pub enum Ast {
     Or(Box<Ast>, Box<Ast>),
     Brackets(Box<Ast>),
     Assign(String, Box<Ast>),
-    FunctionCall(String, Vec<Ast>),
+    FunctionCall {
+        value: Box<Ast>,
+        args: Vec<Ast>,
+    },
     FunctionDefinition {
         name: String,
+        arg_names: Vec<String>,
+        body: Box<Ast>,
+    },
+    UnnamedFunction {
         arg_names: Vec<String>,
         body: Box<Ast>,
     },
@@ -160,7 +167,11 @@ impl<'a> Parser<'a> {
                         expected: Some(TokenKind::Newline),
                     });
                 }
-                TokenKind::Keyword(Keyword::Fn) => (Some(self.parse_function_definition()?), true),
+                TokenKind::Keyword(Keyword::Fn)
+                    if matches!(self.peek_nth_kind(2), Some(TokenKind::Identifier(_))) =>
+                {
+                    (Some(self.parse_function_definition(true)?), true)
+                }
                 TokenKind::Keyword(Keyword::If) => (Some(self.parse_if_statement()?), true),
                 TokenKind::Keyword(Keyword::While) => (Some(self.parse_while_loop()?), true),
                 TokenKind::Keyword(Keyword::Continue) => {
@@ -262,21 +273,12 @@ impl<'a> Parser<'a> {
                             self.parse_expression_with_min_precedence(boolean_negate_precedence)?;
                         Ok(Ast::BooleanNegate(Box::new(rhs)))
                     }
-                    TokenKind::LParen => {
-                        self.next();
-                        let inner = self.parse_expression()?;
-                        self.expect(TokenKind::RParen)?;
-                        Ok(Ast::Brackets(Box::new(inner)))
-                    }
-                    TokenKind::Identifier(_)
-                        if self.peek_nth_kind(2) == Some(&TokenKind::LParen) =>
-                    {
-                        self.parse_function_call()
-                    }
-                    TokenKind::Identifier(_)
+                    TokenKind::LParen
+                    | TokenKind::Identifier(_)
                     | TokenKind::Number(_)
                     | TokenKind::String(_)
-                    | TokenKind::Keyword(Keyword::True | Keyword::False) => {
+                    | TokenKind::Keyword(Keyword::True | Keyword::False)
+                    | TokenKind::Keyword(Keyword::Fn) => {
                         let mut lhs = self.parse_identifier_or_value()?;
                         while let Some(Token {
                             kind: TokenKind::Operator(op),
@@ -307,25 +309,40 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_identifier_or_value(&mut self) -> Result<Ast, ParseError> {
-        match self.next() {
+        let mut ast = match self.next() {
             Some(token) => match &token.kind {
-                TokenKind::Identifier(name) => Ok(Ast::Variable(name.clone())),
-                TokenKind::Number(num) => Ok(Ast::NumberLiteral(*num)),
-                TokenKind::String(str) => Ok(Ast::StringLiteral(str.clone())),
-                TokenKind::Keyword(Keyword::True) => Ok(Ast::BooleanLiteral(true)),
-                TokenKind::Keyword(Keyword::False) => Ok(Ast::BooleanLiteral(false)),
-                _ => Err(ParseError::UnexpectedToken {
-                    token: token.clone(),
-                    expected: None,
-                }),
+                TokenKind::LParen => {
+                    let inner = self.parse_expression()?;
+                    self.expect(TokenKind::RParen)?;
+                    Ast::Brackets(Box::new(inner))
+                }
+                TokenKind::Identifier(name) => Ast::Variable(name.clone()),
+                TokenKind::Number(num) => Ast::NumberLiteral(*num),
+                TokenKind::String(str) => Ast::StringLiteral(str.clone()),
+                TokenKind::Keyword(Keyword::True) => Ast::BooleanLiteral(true),
+                TokenKind::Keyword(Keyword::False) => Ast::BooleanLiteral(false),
+                TokenKind::Keyword(Keyword::Fn) => {
+                    // We match on `self.next()`, but the parse function expects the `fn` keyword
+                    self.idx -= 1;
+                    self.parse_function_definition(false)?
+                }
+                _ => {
+                    return Err(ParseError::UnexpectedToken {
+                        token: token.clone(),
+                        expected: None,
+                    })
+                }
             },
-            None => Err(ParseError::NoTokensLeft),
+            None => return Err(ParseError::NoTokensLeft),
+        };
+        while let Some(TokenKind::LParen) = self.peek_kind() {
+            ast = self.parse_function_call(ast)?;
         }
+        Ok(ast)
     }
 
-    fn parse_function_call(&mut self) -> Result<Ast, ParseError> {
-        // <name>(<val1>, <val2>, ...)
-        let fn_name = self.expect_identifier()?.to_string();
+    fn parse_function_call(&mut self, called_value: Ast) -> Result<Ast, ParseError> {
+        // <value>(<val1>, <val2>, ...)
         self.expect(TokenKind::LParen)?;
         let mut args = Vec::new();
         while self.peek_kind() != Some(&TokenKind::RParen) {
@@ -342,7 +359,10 @@ impl<'a> Parser<'a> {
             }
         }
         self.expect(TokenKind::RParen)?;
-        Ok(Ast::FunctionCall(fn_name, args))
+        Ok(Ast::FunctionCall {
+            value: Box::new(called_value),
+            args,
+        })
     }
 
     fn parse_assignment(&mut self) -> Result<Ast, ParseError> {
@@ -352,10 +372,14 @@ impl<'a> Parser<'a> {
         Ok(Ast::Assign(var_name, Box::new(rhs)))
     }
 
-    fn parse_function_definition(&mut self) -> Result<Ast, ParseError> {
-        // fn <name> (<arg1>, <arg2>, ...) { <body> }
+    fn parse_function_definition(&mut self, named: bool) -> Result<Ast, ParseError> {
+        // fn [ <name> ] (<arg1>, <arg2>, ...) { <body> }
         self.expect(TokenKind::Keyword(Keyword::Fn))?;
-        let fn_name = self.expect_identifier()?.to_string();
+        let fn_name = if named {
+            Some(self.expect_identifier()?.to_string())
+        } else {
+            None
+        };
         self.expect(TokenKind::LParen)?;
 
         let mut arg_names = Vec::new();
@@ -377,11 +401,19 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LBrace)?;
         let body = self.parse_block()?;
         self.expect(TokenKind::RBrace)?;
-        Ok(Ast::FunctionDefinition {
-            name: fn_name,
-            arg_names,
-            body: Box::new(body),
-        })
+
+        if let Some(name) = fn_name {
+            Ok(Ast::FunctionDefinition {
+                name,
+                arg_names,
+                body: Box::new(body),
+            })
+        } else {
+            Ok(Ast::UnnamedFunction {
+                arg_names,
+                body: Box::new(body),
+            })
+        }
     }
 
     fn parse_if_statement(&mut self) -> Result<Ast, ParseError> {
