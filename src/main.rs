@@ -1124,4 +1124,32 @@ mod tests {
         ";
         assert!(eval_str(code).is_ok());
     }
+
+    #[test]
+    fn test_function_equality() {
+        assert_eq_bool!(eval_str("fn () { } == fn () { }").unwrap(), false);
+
+        let mut ctx = Context::new();
+        let code = "\
+            fn add1(a, b) {
+                a + b
+            }
+
+            fn add2(a, b) {
+                a + b
+            }
+
+            add1_2 = add1
+            add1_3 = add1_2
+            add2_2 = add2
+        ";
+        eval_str_ctx(code, &mut ctx).unwrap();
+        assert_eq_bool!(eval_str_ctx("add1 == add2", &mut ctx).unwrap(), false);
+        assert_eq_bool!(eval_str_ctx("add1 == add1", &mut ctx).unwrap(), true);
+        assert_eq_bool!(eval_str_ctx("add1 == add1_2", &mut ctx).unwrap(), true);
+        assert_eq_bool!(eval_str_ctx("add1 == add1_3", &mut ctx).unwrap(), true);
+        assert_eq_bool!(eval_str_ctx("add1_3 == add1_3", &mut ctx).unwrap(), true);
+        assert_eq_bool!(eval_str_ctx("add1_2 == add1_3", &mut ctx).unwrap(), true);
+        assert_eq_bool!(eval_str_ctx("add1_2 == add2_2", &mut ctx).unwrap(), false);
+    }
 }

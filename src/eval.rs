@@ -234,6 +234,7 @@ impl Value {
             (Number(l), Number(r)) => l == r,
             (Bool(l), Bool(r)) => l == r,
             (String(l), String(r)) => l == r,
+            (Function(l), Function(r)) => Rc::as_ptr(&l) == Rc::as_ptr(&r),
             _ => false,
         };
         Ok(Bool(eq))
