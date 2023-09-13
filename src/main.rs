@@ -272,9 +272,9 @@ mod tests {
     #[test]
     fn test_variables() {
         let mut ctx = Context::new();
-        assert_eq_num!(eval_str_ctx("a = 2", &mut ctx).unwrap(), 2.0);
-        assert_eq_num!(eval_str_ctx("b = a + 1", &mut ctx).unwrap(), 3.0);
-        assert_eq_num!(eval_str_ctx("c = a + b", &mut ctx).unwrap(), 5.0);
+        assert!(eval_str_ctx("a = 2", &mut ctx).is_ok());
+        assert!(eval_str_ctx("b = a + 1", &mut ctx).is_ok());
+        assert!(eval_str_ctx("c = a + b", &mut ctx).is_ok());
         assert_eq_num!(ctx.get_var("a").unwrap(), 2.0);
         assert_eq_num!(ctx.get_var("b").unwrap(), 3.0);
         assert_eq_num!(ctx.get_var("c").unwrap(), 5.0);
@@ -282,7 +282,7 @@ mod tests {
         assert!(eval_str("not_defined").is_err());
 
         let mut ctx = Context::new();
-        assert_eq_num!(eval_str_ctx("some_longer_name = 2", &mut ctx).unwrap(), 2.0);
+        assert!(eval_str_ctx("some_longer_name = 2", &mut ctx).is_ok());
         assert_eq_num!(ctx.get_var("some_longer_name").unwrap(), 2.0);
 
         assert!(eval_str("a b = 2").is_err());
@@ -367,7 +367,7 @@ mod tests {
     fn test_multiple_lines() {
         let mut ctx = Context::new();
 
-        let result = eval_str_ctx(
+        eval_str_ctx(
             r"a = 2
             b = 3
             c = a + b",
@@ -375,7 +375,6 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq_num!(result, 5.0);
         assert_eq_num!(ctx.get_var("a").unwrap(), 2.0);
         assert_eq_num!(ctx.get_var("b").unwrap(), 3.0);
         assert_eq_num!(ctx.get_var("c").unwrap(), 5.0);

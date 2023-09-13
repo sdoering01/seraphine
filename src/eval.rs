@@ -1207,7 +1207,7 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
         Ast::Assign(name, rhs) => {
             let rval = evaluate(rhs, ctx)?;
             ctx.set_var(name, rval.clone());
-            rval
+            NULL_VALUE
         }
         Ast::IndexingAssign { value, index, rhs } => {
             let value = evaluate(value, ctx)?;
