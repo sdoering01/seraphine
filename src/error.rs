@@ -180,6 +180,10 @@ pub enum EvalError {
         r#type: Type,
         member_name: String,
     },
+    IndexOutOfBounds {
+        index: usize,
+        length: usize,
+    },
     TypeError(String),
     CallStackOverflow,
     ContinueOutsideOfLoop,
@@ -236,6 +240,13 @@ impl Display for EvalError {
                 member_name,
             } => {
                 write!(f, "Type '{}' has no member named '{}'", t, member_name)
+            }
+            IndexOutOfBounds { index, length } => {
+                write!(
+                    f,
+                    "Index {} is out of bounds for list of length {}",
+                    index, length
+                )
             }
             TypeError(e) => write!(f, "{}", e),
             CallStackOverflow => write!(f, "Call stack overflow (too many nested function calls)"),

@@ -66,6 +66,10 @@ pub enum TokenKind {
     LBrace,
     /// `}`
     RBrace,
+    /// `[`
+    LBracket,
+    /// `]`
+    RBracket,
     /// `=`
     Equal,
     /// '.'
@@ -161,6 +165,8 @@ impl<'a> Tokenizer<'a> {
                 (')', _) => TokenKind::RParen,
                 ('{', _) => TokenKind::LBrace,
                 ('}', _) => TokenKind::RBrace,
+                ('[', _) => TokenKind::LBracket,
+                (']', _) => TokenKind::RBracket,
                 ('=', _) => TokenKind::Equal,
                 (c @ ('0'..='9'), _) | (c @ '.', Some('0'..='9')) => {
                     let mut has_dot = c == '.';

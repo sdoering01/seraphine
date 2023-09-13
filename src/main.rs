@@ -150,6 +150,26 @@ mod tests {
         };
     }
 
+    macro_rules! assert_eq_num_list {
+        ( $left:expr, $right:expr ) => {
+            match ($left, $right) {
+                (value, expected) => {
+                    let $crate::eval::Value::List(got) = value else {
+                        ::std::panic!("value is not a list");
+                    };
+                    let got = got.borrow();
+                    ::std::assert_eq!(got.len(), expected.len(), "length mismatch");
+                    for (i, (got, expected)) in got.iter().zip(expected.iter()).enumerate() {
+                        let $crate::eval::Value::Number(got) = got else {
+                            ::std::panic!("value is not a number");
+                        };
+                        ::std::assert_eq!(*got, *expected, "at index {}", i);
+                    }
+                }
+            }
+        };
+    }
+
     #[test]
     fn test_eval_str() {
         assert!(eval_str("").is_ok());
@@ -1192,6 +1212,73 @@ mod tests {
         let code = r#"
             "abc".this_does_not_exist()
         "#;
+        assert!(eval_str(code).is_err());
+    }
+
+    #[test]
+    fn test_list_literals() {
+        let code = "[]";
+        assert_eq_num_list!(eval_str(code).unwrap(), []);
+
+        let code = "[3.7]";
+        assert_eq_num_list!(eval_str(code).unwrap(), [3.7]);
+
+        let code = "[1, 2, 3]";
+        assert_eq_num_list!(eval_str(code).unwrap(), [1.0, 2.0, 3.0]);
+
+        let code = "\
+            num = 42
+            [1, 2, 3, num]
+        ";
+        assert_eq_num_list!(eval_str(code).unwrap(), [1.0, 2.0, 3.0, 42.0]);
+
+        let code = r#"
+            ["abc", fn() { }, 42]
+        "#;
+        let Ok(Value::List(list)) = eval_str(code) else {
+            panic!("Expected list");
+        };
+        let list = list.borrow();
+        assert_eq!(list.len(), 3);
+        assert_eq_str!(&list[0], "abc");
+        assert!(matches!(list[1], Value::Function(_)));
+        assert_eq_num!(&list[2], &42.0);
+    }
+
+    #[test]
+    fn test_list_indexing() {
+        let code = "[1, 2, 3][0]";
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
+
+        let code = "\
+            list = [1, 2, 3]
+            list[0]
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
+
+        let code = "\
+            list = [42, -1, 18.9]
+            list[2]
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 18.9);
+
+        let code = "\
+            list = [42, -1, 18.9]
+            list[3]
+        ";
+        assert!(eval_str(code).is_err());
+
+        // TODO: Add this once negative indexing is either supported or properly rejected
+        // let code = "\
+        //     list = [42, -1, 18.9]
+        //     list[-1]
+        // ";
+        // assert!(eval_str(code).is_err());
+
+        let code = "\
+            list = []
+            list[0]
+        ";
         assert!(eval_str(code).is_err());
     }
 }

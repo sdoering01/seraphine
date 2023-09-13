@@ -10,6 +10,7 @@ pub enum Ast {
     NumberLiteral(f64),
     BooleanLiteral(bool),
     StringLiteral(String),
+    ListLiteral(Vec<Ast>),
     Variable(String),
     Add(Box<Ast>, Box<Ast>),
     Subtract(Box<Ast>, Box<Ast>),
@@ -45,6 +46,10 @@ pub enum Ast {
     MemberAccess {
         value: Box<Ast>,
         member: String,
+    },
+    Indexing {
+        value: Box<Ast>,
+        index: Box<Ast>,
     },
     IfStatement {
         condition: Box<Ast>,
@@ -278,6 +283,7 @@ impl<'a> Parser<'a> {
                         Ok(Ast::BooleanNegate(Box::new(rhs)))
                     }
                     TokenKind::LParen
+                    | TokenKind::LBracket
                     | TokenKind::Identifier(_)
                     | TokenKind::Number(_)
                     | TokenKind::String(_)
@@ -320,6 +326,11 @@ impl<'a> Parser<'a> {
                     self.expect(TokenKind::RParen)?;
                     Ast::Brackets(Box::new(inner))
                 }
+                TokenKind::LBracket => {
+                    // We match on `self.next()`, but the parse function expects the `[` token
+                    self.idx -= 1;
+                    self.parse_list_literal()?
+                }
                 TokenKind::Identifier(name) => Ast::Variable(name.clone()),
                 TokenKind::Number(num) => Ast::NumberLiteral(*num),
                 TokenKind::String(str) => Ast::StringLiteral(str.clone()),
@@ -343,6 +354,9 @@ impl<'a> Parser<'a> {
             match self.peek_kind() {
                 Some(TokenKind::LParen) => {
                     ast = self.parse_function_call(ast)?;
+                }
+                Some(TokenKind::LBracket) => {
+                    ast = self.parse_indexing(ast)?;
                 }
                 Some(TokenKind::Dot) => {
                     self.next();
@@ -382,11 +396,43 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_indexing(&mut self, value: Ast) -> Result<Ast, ParseError> {
+        // <value>[<index>]
+        self.expect(TokenKind::LBracket)?;
+        let index = self.parse_expression()?;
+        self.expect(TokenKind::RBracket)?;
+        Ok(Ast::Indexing {
+            value: Box::new(value),
+            index: Box::new(index),
+        })
+    }
+
     fn parse_assignment(&mut self) -> Result<Ast, ParseError> {
         let var_name = self.expect_identifier()?.to_string();
         self.expect(TokenKind::Equal)?;
         let rhs = self.parse_expression()?;
         Ok(Ast::Assign(var_name, Box::new(rhs)))
+    }
+
+    fn parse_list_literal(&mut self) -> Result<Ast, ParseError> {
+        // [ <val1>, <val2>, ... ]
+        self.expect(TokenKind::LBracket)?;
+        let mut values = Vec::new();
+        while self.peek_kind() != Some(&TokenKind::RBracket) {
+            let value = self.parse_expression()?;
+            values.push(value);
+
+            match self.peek_kind() {
+                // TODO: Remove guard once trailing commas are allowed
+                Some(TokenKind::Comma) if self.peek_nth_kind(2) != Some(&TokenKind::RBracket) => {
+                    self.next();
+                }
+                // Let `expect` after loop handle the error
+                _ => break,
+            }
+        }
+        self.expect(TokenKind::RBracket)?;
+        Ok(Ast::ListLiteral(values))
     }
 
     fn parse_function_definition(&mut self, named: bool) -> Result<Ast, ParseError> {

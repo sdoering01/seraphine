@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet},
     fmt::{Debug, Display},
     io::{stderr, stdin, stdout, BufRead, BufReader, Read, Write},
@@ -24,6 +25,7 @@ pub enum Type {
     Bool,
     String,
     Function,
+    List,
 }
 
 impl Display for Type {
@@ -34,6 +36,7 @@ impl Display for Type {
             Bool => write!(f, "bool"),
             String => write!(f, "string"),
             Function => write!(f, "function"),
+            List => write!(f, "list"),
         }
     }
 }
@@ -44,6 +47,7 @@ pub enum Value {
     Bool(bool),
     String(String),
     Function(Rc<Function>),
+    List(Rc<RefCell<Vec<Value>>>),
 }
 
 impl Display for Value {
@@ -60,7 +64,42 @@ impl Display for Value {
             Bool(b) => write!(f, "{}", b),
             String(s) => write!(f, r#""{}""#, s),
             Function(func) => write!(f, "{:?}", func),
+            List(_) => {
+                print_potentially_self_referential(self, f, &mut Vec::new())
+                // TODO: This could fail when the list is in itself
+            }
         }
+    }
+}
+
+fn print_potentially_self_referential(
+    value: &Value,
+    f: &mut std::fmt::Formatter<'_>,
+    refs: &mut Vec<usize>,
+) -> std::fmt::Result {
+    match value {
+        Value::List(lst) => {
+            write!(f, "[")?;
+
+            let pointer = lst.as_ptr() as usize;
+            if refs.contains(&pointer) {
+                write!(f, "...")?;
+            } else {
+                refs.push(lst.as_ptr() as usize);
+                let mut first = true;
+                for item in lst.borrow().iter() {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    first = false;
+                    print_potentially_self_referential(item, f, refs)?;
+                }
+                refs.pop();
+            }
+
+            write!(f, "]")
+        }
+        non_referential => write!(f, "{}", non_referential),
     }
 }
 
@@ -72,6 +111,7 @@ impl Value {
             Bool(..) => Type::Bool,
             String(..) => Type::String,
             Function(..) => Type::Function,
+            List(..) => Type::List,
         }
     }
 
@@ -96,6 +136,7 @@ impl Value {
             Value::Bool(b) => *b,
             Value::String(s) => !s.is_empty(),
             Value::Function(..) => true,
+            Value::List(lst) => !lst.borrow().is_empty(),
         }
     }
 
@@ -191,10 +232,109 @@ impl Value {
                     member_name: member.to_string(),
                 }),
             },
+            Value::List(l) => match member {
+                "length" => Ok(Value::Number(l.borrow().len() as f64)),
+                "get" => {
+                    let func = Function::new_builtin(
+                        "get",
+                        Some(self.clone()),
+                        Some(1),
+                        |_ctx, this, args| {
+                            let Some(Value::List(l)) = this else {
+                                unreachable!()
+                            };
+                            args[0].assert_type(Type::Number)?;
+                            let Value::Number(index) = &args[0] else {
+                                unreachable!()
+                            };
+                            // TODO: Add overflow checks
+                            let index = *index as usize;
+                            let item = l.borrow().get(index).cloned().unwrap_or(NULL_VALUE);
+                            Ok(item)
+                        },
+                    );
+                    Ok(Value::Function(Rc::new(func)))
+                }
+                "set" => {
+                    let func = Function::new_builtin(
+                        "set",
+                        Some(self.clone()),
+                        Some(2),
+                        |_ctx, this, args| {
+                            let Some(Value::List(l)) = this else {
+                                unreachable!()
+                            };
+                            args[0].assert_type(Type::Number)?;
+                            let Value::Number(index) = &args[0] else {
+                                unreachable!()
+                            };
+
+                            // TODO: Add overflow checks
+                            let index = *index as usize;
+                            let mut list = l.borrow_mut();
+                            if index >= list.len() {
+                                return Err(EvalError::IndexOutOfBounds {
+                                    index,
+                                    length: list.len(),
+                                });
+                            }
+                            list[index] = args[1].clone();
+
+                            Ok(NULL_VALUE)
+                        },
+                    );
+                    Ok(Value::Function(Rc::new(func)))
+                }
+                "push" => {
+                    let func = Function::new_builtin(
+                        "push",
+                        Some(self.clone()),
+                        Some(1),
+                        |_ctx, this, args| {
+                            let Some(Value::List(l)) = this else {
+                                unreachable!()
+                            };
+                            l.borrow_mut().push(args[0].clone());
+                            Ok(Value::List(l))
+                        },
+                    );
+                    Ok(Value::Function(Rc::new(func)))
+                }
+                _ => Err(EvalError::NoSuchMember {
+                    r#type: Type::List,
+                    member_name: member.to_string(),
+                }),
+            },
             _ => Err(EvalError::NoSuchMember {
                 r#type: self.get_type(),
                 member_name: member.to_string(),
             }),
+        }
+    }
+
+    fn get_index(self, idx: Value) -> Result<Value, EvalError> {
+        match self {
+            Value::List(l) => {
+                idx.assert_type(Type::Number)?;
+                let Value::Number(index) = idx else {
+                    unreachable!()
+                };
+
+                // TODO: Add overflow checks
+                let index = index as usize;
+                let list = l.borrow();
+                if index >= list.len() {
+                    return Err(EvalError::IndexOutOfBounds {
+                        index,
+                        length: list.len(),
+                    });
+                }
+                Ok(list[index].clone())
+            }
+            _ => {
+                let error = format!("Cannot index value of type {}", self.get_type());
+                Err(EvalError::TypeError(error))
+            }
         }
     }
 
@@ -988,6 +1128,14 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
             let value = evaluate(value_ast, ctx)?;
             value.get_member(member)?
         }
+        Ast::Indexing {
+            value: value_ast,
+            index: index_ast,
+        } => {
+            let value = evaluate(value_ast, ctx)?;
+            let index = evaluate(index_ast, ctx)?;
+            value.get_index(index)?
+        }
         Ast::Lines(lines) => {
             let mut result = NULL_VALUE;
             for line in lines {
@@ -998,6 +1146,13 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
         Ast::NumberLiteral(n) => Value::Number(*n),
         Ast::BooleanLiteral(b) => Value::Bool(*b),
         Ast::StringLiteral(s) => Value::String(s.clone()),
+        Ast::ListLiteral(values) => {
+            let values: Vec<_> = values
+                .iter()
+                .map(|ast| evaluate(ast, ctx))
+                .collect::<Result<_, _>>()?;
+            Value::List(Rc::new(RefCell::new(values)))
+        }
         Ast::Variable(name) => ctx
             .get_var(name)
             .ok_or_else(|| EvalError::VariableNotDefined(name.clone()))?,
