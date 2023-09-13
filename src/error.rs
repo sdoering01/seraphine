@@ -176,6 +176,10 @@ pub enum EvalError {
         expected: Type,
         got: Type,
     },
+    NoSuchMember {
+        r#type: Type,
+        member_name: String,
+    },
     TypeError(String),
     CallStackOverflow,
     ContinueOutsideOfLoop,
@@ -226,6 +230,12 @@ impl Display for EvalError {
                     "Expected value of type '{}' but got value of type ‘{}' instead",
                     expected, got
                 )
+            }
+            NoSuchMember {
+                r#type: t,
+                member_name,
+            } => {
+                write!(f, "Type '{}' has no member named '{}'", t, member_name)
             }
             TypeError(e) => write!(f, "{}", e),
             CallStackOverflow => write!(f, "Call stack overflow (too many nested function calls)"),

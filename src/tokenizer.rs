@@ -68,6 +68,8 @@ pub enum TokenKind {
     RBrace,
     /// `=`
     Equal,
+    /// '.'
+    Dot,
     Newline,
     /// End of file
     Eof,
@@ -105,24 +107,14 @@ impl<'a> Tokenizer<'a> {
         self.chars.peek()
     }
 
-    /// Checks whether the next token is equal to `c`. If that is the case, advance the underlying
-    /// iterator and returns true, else returns false.
-    fn take(&mut self, c: char) -> bool {
-        if self.peek() == Some(&c) {
-            self.next();
-            true
-        } else {
-            false
-        }
-    }
-
     fn tokenize(&mut self) -> Result<Vec<Token>, TokenizeError> {
         let mut tokens = vec![];
 
         while let Some(c) = self.next() {
             let token_start_pos = self.idx - 1;
-            let token_kind = match c {
-                '/' if self.take('/') => {
+            let token_kind = match (c, self.peek()) {
+                ('/', Some('/')) => {
+                    self.next();
                     while let Some(c) = self.peek() {
                         if *c == '\n' {
                             break;
@@ -131,28 +123,46 @@ impl<'a> Tokenizer<'a> {
                     }
                     continue;
                 }
-                '!' if self.take('=') => TokenKind::Operator(Operator::Unequal),
-                '=' if self.take('=') => TokenKind::Operator(Operator::Equal),
-                '<' if self.take('=') => TokenKind::Operator(Operator::LessThanOrEqual),
-                '>' if self.take('=') => TokenKind::Operator(Operator::GreaterThanOrEqual),
-                '&' if self.take('&') => TokenKind::Operator(Operator::And),
-                '|' if self.take('|') => TokenKind::Operator(Operator::Or),
-                '!' => TokenKind::Operator(Operator::Exclamation),
-                '<' => TokenKind::Operator(Operator::LessThan),
-                '>' => TokenKind::Operator(Operator::GreaterThan),
-                '+' => TokenKind::Operator(Operator::Plus),
-                '-' => TokenKind::Operator(Operator::Minus),
-                '*' => TokenKind::Operator(Operator::Star),
-                '/' => TokenKind::Operator(Operator::Slash),
-                '^' => TokenKind::Operator(Operator::Caret),
-                '%' => TokenKind::Operator(Operator::Percent),
-                ',' => TokenKind::Comma,
-                '(' => TokenKind::LParen,
-                ')' => TokenKind::RParen,
-                '{' => TokenKind::LBrace,
-                '}' => TokenKind::RBrace,
-                '=' => TokenKind::Equal,
-                c @ ('0'..='9' | '.') => {
+                ('!', Some('=')) => {
+                    self.next();
+                    TokenKind::Operator(Operator::Unequal)
+                }
+                ('=', Some('=')) => {
+                    self.next();
+                    TokenKind::Operator(Operator::Equal)
+                }
+                ('<', Some('=')) => {
+                    self.next();
+                    TokenKind::Operator(Operator::LessThanOrEqual)
+                }
+                ('>', Some('=')) => {
+                    self.next();
+                    TokenKind::Operator(Operator::GreaterThanOrEqual)
+                }
+                ('&', Some('&')) => {
+                    self.next();
+                    TokenKind::Operator(Operator::And)
+                }
+                ('|', Some('|')) => {
+                    self.next();
+                    TokenKind::Operator(Operator::Or)
+                }
+                ('!', _) => TokenKind::Operator(Operator::Exclamation),
+                ('<', _) => TokenKind::Operator(Operator::LessThan),
+                ('>', _) => TokenKind::Operator(Operator::GreaterThan),
+                ('+', _) => TokenKind::Operator(Operator::Plus),
+                ('-', _) => TokenKind::Operator(Operator::Minus),
+                ('*', _) => TokenKind::Operator(Operator::Star),
+                ('/', _) => TokenKind::Operator(Operator::Slash),
+                ('^', _) => TokenKind::Operator(Operator::Caret),
+                ('%', _) => TokenKind::Operator(Operator::Percent),
+                (',', _) => TokenKind::Comma,
+                ('(', _) => TokenKind::LParen,
+                (')', _) => TokenKind::RParen,
+                ('{', _) => TokenKind::LBrace,
+                ('}', _) => TokenKind::RBrace,
+                ('=', _) => TokenKind::Equal,
+                (c @ ('0'..='9'), _) | (c @ '.', Some('0'..='9')) => {
                     let mut has_dot = c == '.';
                     let mut has_e = false;
 
@@ -204,7 +214,8 @@ impl<'a> Tokenizer<'a> {
                     };
                     TokenKind::Number(n)
                 }
-                '"' => {
+                ('.', _) => TokenKind::Dot,
+                ('"', _) => {
                     let mut str = String::new();
                     let mut terminated = false;
                     while let Some(c) = self.next() {
@@ -241,7 +252,7 @@ impl<'a> Tokenizer<'a> {
 
                     TokenKind::String(str)
                 }
-                c @ ('a'..='z' | 'A'..='Z' | '_') => {
+                (c @ ('a'..='z' | 'A'..='Z' | '_'), _) => {
                     let mut ident = String::new();
                     ident.push(c);
                     while let Some(c) = self.peek() {
@@ -268,9 +279,9 @@ impl<'a> Tokenizer<'a> {
                     }
                 }
                 // TODO: Account for \r\n
-                '\n' => TokenKind::Newline,
-                c if c.is_ascii_whitespace() => continue,
-                c => {
+                ('\n', _) => TokenKind::Newline,
+                (c, _) if c.is_ascii_whitespace() => continue,
+                (c, _) => {
                     return Err(TokenizeError::UnexpectedChar {
                         got: c,
                         pos: self.idx - 1,

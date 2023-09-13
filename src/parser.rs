@@ -42,6 +42,10 @@ pub enum Ast {
         arg_names: Vec<String>,
         body: Box<Ast>,
     },
+    MemberAccess {
+        value: Box<Ast>,
+        member: String,
+    },
     IfStatement {
         condition: Box<Ast>,
         if_body: Box<Ast>,
@@ -335,8 +339,21 @@ impl<'a> Parser<'a> {
             },
             None => return Err(ParseError::NoTokensLeft),
         };
-        while let Some(TokenKind::LParen) = self.peek_kind() {
-            ast = self.parse_function_call(ast)?;
+        loop {
+            match self.peek_kind() {
+                Some(TokenKind::LParen) => {
+                    ast = self.parse_function_call(ast)?;
+                }
+                Some(TokenKind::Dot) => {
+                    self.next();
+                    let member = self.expect_identifier()?;
+                    ast = Ast::MemberAccess {
+                        value: Box::new(ast),
+                        member: member.to_string(),
+                    };
+                }
+                _ => break,
+            }
         }
         Ok(ast)
     }

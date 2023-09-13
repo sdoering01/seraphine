@@ -122,6 +122,82 @@ impl Value {
         }
     }
 
+    fn get_member(&self, member: &str) -> Result<Value, EvalError> {
+        match self {
+            Value::String(s) => match member {
+                "length" => Ok(Value::Number(s.len() as f64)),
+                "trim" => {
+                    let func = Function::new_builtin(
+                        "trim",
+                        Some(self.clone()),
+                        Some(0),
+                        |_ctx, this, _args| {
+                            let Some(Value::String(s)) = this else {
+                                unreachable!()
+                            };
+                            let trimmed = s.trim().to_string();
+                            Ok(Value::String(trimmed))
+                        },
+                    );
+                    Ok(Value::Function(Rc::new(func)))
+                }
+                "concat" => {
+                    let func = Function::new_builtin(
+                        "concat",
+                        Some(self.clone()),
+                        Some(1),
+                        |_ctx, this, args| {
+                            let Some(Value::String(mut s)) = this else {
+                                unreachable!()
+                            };
+                            args[0].assert_type(Type::String)?;
+                            let Value::String(other) = &args[0] else {
+                                unreachable!()
+                            };
+                            s.push_str(other);
+                            Ok(Value::String(s))
+                        },
+                    );
+                    Ok(Value::Function(Rc::new(func)))
+                }
+                "slice" => {
+                    let func = Function::new_builtin(
+                        "slice",
+                        Some(self.clone()),
+                        Some(2),
+                        |_ctx, this, args| {
+                            let Some(Value::String(s)) = this else {
+                                unreachable!()
+                            };
+                            args[0].assert_type(Type::Number)?;
+                            args[1].assert_type(Type::Number)?;
+                            let Value::Number(start) = &args[0] else {
+                                unreachable!()
+                            };
+                            let Value::Number(end) = &args[1] else {
+                                unreachable!()
+                            };
+                            // TODO: Add overflow checks
+                            let start = *start as usize;
+                            let end = *end as usize;
+                            let sliced = if end > start { &s[start..end] } else { "" };
+                            Ok(Value::String(sliced.to_string()))
+                        },
+                    );
+                    Ok(Value::Function(Rc::new(func)))
+                }
+                _ => Err(EvalError::NoSuchMember {
+                    r#type: Type::String,
+                    member_name: member.to_string(),
+                }),
+            },
+            _ => Err(EvalError::NoSuchMember {
+                r#type: self.get_type(),
+                member_name: member.to_string(),
+            }),
+        }
+    }
+
     fn add(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
         match (self, rhs) {
@@ -334,10 +410,12 @@ impl Value {
 
 const NULL_VALUE: Value = Value::Number(0.0);
 
-type BuiltinFunctionClosure = Box<dyn Fn(&mut Context, &[Value]) -> Result<Value, EvalError>>;
+type BuiltinFunctionClosure =
+    Box<dyn Fn(&mut Context, Option<Value>, &[Value]) -> Result<Value, EvalError>>;
 
 pub enum Function {
     Builtin {
+        receiver: Option<Value>,
         name: String,
         n_args: Option<usize>,
         func: BuiltinFunctionClosure,
@@ -367,11 +445,17 @@ impl Debug for Function {
 }
 
 impl Function {
-    pub fn new_builtin<F>(name: impl Into<String>, n_args: Option<usize>, func: F) -> Self
+    pub fn new_builtin<F>(
+        name: impl Into<String>,
+        receiver: Option<Value>,
+        n_args: Option<usize>,
+        func: F,
+    ) -> Self
     where
-        F: Fn(&mut Context, &[Value]) -> Result<Value, EvalError> + 'static,
+        F: Fn(&mut Context, Option<Value>, &[Value]) -> Result<Value, EvalError> + 'static,
     {
         Self::Builtin {
+            receiver,
             name: name.into(),
             n_args,
             func: Box::new(func),
@@ -410,7 +494,7 @@ impl Function {
 
     pub fn call(&self, ctx: &mut Context, args: &[Value]) -> Result<Value, EvalError> {
         match self {
-            Function::Builtin { func, .. } => func(ctx, args),
+            Function::Builtin { func, receiver, .. } => func(ctx, receiver.clone(), args),
             Function::UserDefined {
                 arg_names, body, ..
             } => {
@@ -590,47 +674,51 @@ impl Context {
     }
 
     fn add_standard_functions(&mut self) -> Result<(), EvalError> {
-        self.add_builtin_function("_set_internal_side_effect_flag", Some(0), |ctx, _args| {
-            ctx._internal_side_effect_flag = true;
-            Ok(NULL_VALUE)
-        });
+        self.add_builtin_function(
+            "_set_internal_side_effect_flag",
+            Some(0),
+            |ctx, _this, _args| {
+                ctx._internal_side_effect_flag = true;
+                Ok(NULL_VALUE)
+            },
+        );
 
-        self.add_builtin_function("print", None, |ctx, args| {
+        self.add_builtin_function("print", None, |ctx, _this, args| {
             print_values(&mut ctx.stdout, args)?;
             ctx.stdout.flush()?;
             Ok(NULL_VALUE)
         });
 
-        self.add_builtin_function("println", None, |ctx, args| {
+        self.add_builtin_function("println", None, |ctx, _this, args| {
             print_values(&mut ctx.stdout, args)?;
             writeln!(ctx.stdout, "")?;
             Ok(NULL_VALUE)
         });
 
-        self.add_builtin_function("eprint", None, |ctx, args| {
+        self.add_builtin_function("eprint", None, |ctx, _this, args| {
             print_values(&mut ctx.stderr, args)?;
             ctx.stderr.flush()?;
             Ok(NULL_VALUE)
         });
 
-        self.add_builtin_function("eprintln", None, |ctx, args| {
+        self.add_builtin_function("eprintln", None, |ctx, _this, args| {
             print_values(&mut ctx.stderr, args)?;
             writeln!(ctx.stderr, "")?;
             Ok(NULL_VALUE)
         });
 
-        self.add_builtin_function("read_line", Some(0), |ctx, _args| {
+        self.add_builtin_function("read_line", Some(0), |ctx, _this, _args| {
             let mut str = String::new();
             ctx.stdin.read_line(&mut str)?;
             str.pop();
             Ok(Value::String(str))
         });
 
-        self.add_builtin_function("to_string", Some(1), |_ctx, args| {
+        self.add_builtin_function("to_string", Some(1), |_ctx, _this, args| {
             Ok(Value::String(args[0].convert_to_string()))
         });
 
-        self.add_builtin_function("parse_number", Some(1), |_ctx, args| {
+        self.add_builtin_function("parse_number", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::String)?;
             let Value::String(ref arg) = args[0] else {
                 unreachable!()
@@ -641,7 +729,7 @@ impl Context {
 
         // TODO: Scope functions to a separate namespace like `math`, so they can be used via
         // `math.is_nan(42)`
-        self.add_builtin_function("is_nan", Some(1), |_ctx, args| {
+        self.add_builtin_function("is_nan", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
@@ -649,7 +737,7 @@ impl Context {
             Ok(Value::Bool(arg.is_nan()))
         });
 
-        self.add_builtin_function("is_infinite", Some(1), |_ctx, args| {
+        self.add_builtin_function("is_infinite", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
@@ -657,7 +745,7 @@ impl Context {
             Ok(Value::Bool(arg.is_infinite()))
         });
 
-        self.add_builtin_function("is_finite", Some(1), |_ctx, args| {
+        self.add_builtin_function("is_finite", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
@@ -665,49 +753,49 @@ impl Context {
             Ok(Value::Bool(arg.is_finite()))
         });
 
-        self.add_builtin_function("sin", Some(1), |_ctx, args| {
+        self.add_builtin_function("sin", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
             };
             Ok(Value::Number(arg.sin()))
         });
-        self.add_builtin_function("cos", Some(1), |_ctx, args| {
+        self.add_builtin_function("cos", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
             };
             Ok(Value::Number(arg.cos()))
         });
-        self.add_builtin_function("tan", Some(1), |_ctx, args| {
+        self.add_builtin_function("tan", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
             };
             Ok(Value::Number(arg.tan()))
         });
-        self.add_builtin_function("asin", Some(1), |_ctx, args| {
+        self.add_builtin_function("asin", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
             };
             Ok(Value::Number(arg.asin()))
         });
-        self.add_builtin_function("acos", Some(1), |_ctx, args| {
+        self.add_builtin_function("acos", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
             };
             Ok(Value::Number(arg.acos()))
         });
-        self.add_builtin_function("atan", Some(1), |_ctx, args| {
+        self.add_builtin_function("atan", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
             };
             Ok(Value::Number(arg.atan()))
         });
-        self.add_builtin_function("atan2", Some(1), |_ctx, args| {
+        self.add_builtin_function("atan2", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             args[1].assert_type(Type::Number)?;
             let Value::Number(arg1) = args[0] else {
@@ -718,21 +806,21 @@ impl Context {
             };
             Ok(Value::Number(arg1.atan2(arg2)))
         });
-        self.add_builtin_function("tanh", Some(1), |_ctx, args| {
+        self.add_builtin_function("tanh", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
             };
             Ok(Value::Number(arg.tanh()))
         });
-        self.add_builtin_function("sinh", Some(1), |_ctx, args| {
+        self.add_builtin_function("sinh", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
             };
             Ok(Value::Number(arg.sinh()))
         });
-        self.add_builtin_function("cosh", Some(1), |_ctx, args| {
+        self.add_builtin_function("cosh", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
@@ -740,28 +828,28 @@ impl Context {
             Ok(Value::Number(arg.cosh()))
         });
 
-        self.add_builtin_function("ln", Some(1), |_ctx, args| {
+        self.add_builtin_function("ln", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
             };
             Ok(Value::Number(arg.ln()))
         });
-        self.add_builtin_function("log2", Some(1), |_ctx, args| {
+        self.add_builtin_function("log2", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
             };
             Ok(Value::Number(arg.log2()))
         });
-        self.add_builtin_function("log10", Some(1), |_ctx, args| {
+        self.add_builtin_function("log10", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
             };
             Ok(Value::Number(arg.log10()))
         });
-        self.add_builtin_function("log", Some(2), |_ctx, args| {
+        self.add_builtin_function("log", Some(2), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             args[1].assert_type(Type::Number)?;
             let Value::Number(arg1) = args[0] else {
@@ -773,14 +861,14 @@ impl Context {
             Ok(Value::Number(arg1.log(arg2)))
         });
 
-        self.add_builtin_function("abs", Some(1), |_ctx, args| {
+        self.add_builtin_function("abs", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
             };
             Ok(Value::Number(arg.abs()))
         });
-        self.add_builtin_function("min", Some(2), |_ctx, args| {
+        self.add_builtin_function("min", Some(2), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             args[1].assert_type(Type::Number)?;
             let Value::Number(arg1) = args[0] else {
@@ -791,7 +879,7 @@ impl Context {
             };
             Ok(Value::Number(arg1.min(arg2)))
         });
-        self.add_builtin_function("max", Some(2), |_ctx, args| {
+        self.add_builtin_function("max", Some(2), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             args[1].assert_type(Type::Number)?;
             let Value::Number(arg1) = args[0] else {
@@ -802,21 +890,21 @@ impl Context {
             };
             Ok(Value::Number(arg1.max(arg2)))
         });
-        self.add_builtin_function("floor", Some(1), |_ctx, args| {
+        self.add_builtin_function("floor", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
             };
             Ok(Value::Number(arg.floor()))
         });
-        self.add_builtin_function("ceil", Some(1), |_ctx, args| {
+        self.add_builtin_function("ceil", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
             };
             Ok(Value::Number(arg.ceil()))
         });
-        self.add_builtin_function("round", Some(1), |_ctx, args| {
+        self.add_builtin_function("round", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
@@ -824,14 +912,14 @@ impl Context {
             Ok(Value::Number(arg.round()))
         });
 
-        self.add_builtin_function("sqrt", Some(1), |_ctx, args| {
+        self.add_builtin_function("sqrt", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
             };
             Ok(Value::Number(arg.sqrt()))
         });
-        self.add_builtin_function("exp", Some(1), |_ctx, args| {
+        self.add_builtin_function("exp", Some(1), |_ctx, _this, args| {
             args[0].assert_type(Type::Number)?;
             let Value::Number(arg) = args[0] else {
                 unreachable!()
@@ -839,7 +927,7 @@ impl Context {
             Ok(Value::Number(arg.exp()))
         });
 
-        self.add_builtin_function("inspect", Some(1), |_ctx, args| {
+        self.add_builtin_function("inspect", Some(1), |_ctx, _this, args| {
             println!("{}", args[0]);
             Ok(args[0].clone())
         });
@@ -853,11 +941,11 @@ impl Context {
         n_args: Option<usize>,
         func: F,
     ) where
-        F: Fn(&mut Context, &[Value]) -> Result<Value, EvalError> + 'static,
+        F: Fn(&mut Context, Option<Value>, &[Value]) -> Result<Value, EvalError> + 'static,
     {
         self.set_var(
             name.clone(),
-            Value::Function(Rc::new(Function::new_builtin(name, n_args, func))),
+            Value::Function(Rc::new(Function::new_builtin(name, None, n_args, func))),
         )
     }
 
@@ -892,6 +980,13 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
         Ast::UnnamedFunction { arg_names, body } => {
             let func = Function::new_user_defined(None, arg_names.clone(), *body.clone())?;
             Value::Function(Rc::new(func))
+        }
+        Ast::MemberAccess {
+            value: value_ast,
+            member,
+        } => {
+            let value = evaluate(value_ast, ctx)?;
+            value.get_member(member)?
         }
         Ast::Lines(lines) => {
             let mut result = NULL_VALUE;

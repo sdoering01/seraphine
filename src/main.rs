@@ -323,7 +323,7 @@ mod tests {
     #[test]
     fn test_functions() {
         let mut ctx = Context::new();
-        ctx.add_builtin_function("add", Some(2), |_ctx, args| {
+        ctx.add_builtin_function("add", Some(2), |_ctx, _this, args| {
             let Value::Number(arg1) = args[0] else {
                 unreachable!()
             };
@@ -1151,5 +1151,47 @@ mod tests {
         assert_eq_bool!(eval_str_ctx("add1_3 == add1_3", &mut ctx).unwrap(), true);
         assert_eq_bool!(eval_str_ctx("add1_2 == add1_3", &mut ctx).unwrap(), true);
         assert_eq_bool!(eval_str_ctx("add1_2 == add2_2", &mut ctx).unwrap(), false);
+    }
+
+    #[test]
+    fn test_member_access() {
+        let code = r#"
+            "Hello, world!".length
+        "#;
+        assert_eq_num!(eval_str(code).unwrap(), 13.0);
+
+        let code = r#"
+            s = "Hello, world!"
+            s.length
+        "#;
+        assert_eq_num!(eval_str(code).unwrap(), 13.0);
+
+        let code = r#"
+            "  abc ".trim()
+        "#;
+        assert_eq_str!(eval_str(code).unwrap(), "abc");
+
+        let code = r#"
+            s = "  abc "
+            s.trim()
+        "#;
+        assert_eq_str!(eval_str(code).unwrap(), "abc");
+
+        let code = r#"
+            s = "  abc "
+            t = s.trim
+            t()
+        "#;
+        assert_eq_str!(eval_str(code).unwrap(), "abc");
+
+        let code = r#"
+            "  abc ".trim().trim()
+        "#;
+        assert_eq_str!(eval_str(code).unwrap(), "abc");
+
+        let code = r#"
+            "abc".this_does_not_exist()
+        "#;
+        assert!(eval_str(code).is_err());
     }
 }
