@@ -30,6 +30,11 @@ pub enum Ast {
     Or(Box<Ast>, Box<Ast>),
     Brackets(Box<Ast>),
     Assign(String, Box<Ast>),
+    IndexingAssign {
+        value: Box<Ast>,
+        index: Box<Ast>,
+        rhs: Box<Ast>,
+    },
     FunctionCall {
         value: Box<Ast>,
         args: Vec<Ast>,
@@ -192,10 +197,7 @@ impl<'a> Parser<'a> {
                     (Some(Ast::Break), true)
                 }
                 TokenKind::Keyword(Keyword::Return) => (Some(self.parse_return()?), true),
-                TokenKind::Identifier(_) if self.peek_nth_kind(2) == Some(&TokenKind::Equal) => {
-                    (Some(self.parse_assignment()?), true)
-                }
-                _ => (Some(self.parse_expression()?), true),
+                _ => (Some(self.parse_expression_or_assignment()?), true),
             };
 
             if let Some(token) = line {
@@ -205,6 +207,32 @@ impl<'a> Parser<'a> {
             want_newline_this_iteration = want_newline_next_iteration;
         }
         Ok(Ast::Lines(lines))
+    }
+
+    fn parse_expression_or_assignment(&mut self) -> Result<Ast, ParseError> {
+        let is_potential_assignment = matches!(self.peek_kind(), Some(TokenKind::Identifier(_)));
+        let lhs = self.parse_expression()?;
+        if is_potential_assignment && self.peek_kind() == Some(&TokenKind::Equal) {
+            match lhs {
+                Ast::Variable(var) => {
+                    self.next();
+                    let rhs = self.parse_expression()?;
+                    return Ok(Ast::Assign(var, Box::new(rhs)));
+                }
+                Ast::Indexing { value, index } => {
+                    self.next();
+                    let rhs = self.parse_expression()?;
+                    return Ok(Ast::IndexingAssign {
+                        value,
+                        index,
+                        rhs: Box::new(rhs),
+                    });
+                }
+                _ => {}
+            }
+        }
+
+        Ok(lhs)
     }
 
     /// Parses an expression.
@@ -405,13 +433,6 @@ impl<'a> Parser<'a> {
             value: Box::new(value),
             index: Box::new(index),
         })
-    }
-
-    fn parse_assignment(&mut self) -> Result<Ast, ParseError> {
-        let var_name = self.expect_identifier()?.to_string();
-        self.expect(TokenKind::Equal)?;
-        let rhs = self.parse_expression()?;
-        Ok(Ast::Assign(var_name, Box::new(rhs)))
     }
 
     fn parse_list_literal(&mut self) -> Result<Ast, ParseError> {

@@ -1281,4 +1281,58 @@ mod tests {
         ";
         assert!(eval_str(code).is_err());
     }
+
+    #[test]
+    fn test_indexing_assignment() {
+        let code = "\
+            list = [1, 2, 3]
+            list[0] = 42
+            list
+        ";
+        assert_eq_num_list!(eval_str(code).unwrap(), [42.0, 2.0, 3.0]);
+
+        let code = "\
+            list = [1, 2, 3]
+            list[5] = 42
+            list
+        ";
+        assert!(eval_str(code).is_err());
+
+        let code = "\
+            matrix = [[1, 2], [3, 4]]
+            matrix[0][0] = 42
+        ";
+        let mut ctx = Context::new();
+        assert!(eval_str_ctx(code, &mut ctx).is_ok());
+        assert_eq_num_list!(eval_str_ctx("matrix[0]", &mut ctx).unwrap(), [42.0, 2.0]);
+        assert_eq_num_list!(eval_str_ctx("matrix[1]", &mut ctx).unwrap(), [3.0, 4.0]);
+
+        let code = "\
+            x = 1
+            y = 1
+            matrix = [[1, 2], [3, 4]]
+            matrix[y][x] = 42
+        ";
+        let mut ctx = Context::new();
+        assert!(eval_str_ctx(code, &mut ctx).is_ok());
+        assert_eq_num_list!(eval_str_ctx("matrix[0]", &mut ctx).unwrap(), [1.0, 2.0]);
+        assert_eq_num_list!(eval_str_ctx("matrix[1]", &mut ctx).unwrap(), [3.0, 42.0]);
+
+        let code = "\
+            fn get_x() { 0 }
+            fn get_y() { 1 }
+            matrix = [[1, 2], [3, 4]]
+            matrix[get_y()][get_x()] = 42
+        ";
+        let mut ctx = Context::new();
+        assert!(eval_str_ctx(code, &mut ctx).is_ok());
+        assert_eq_num_list!(eval_str_ctx("matrix[0]", &mut ctx).unwrap(), [1.0, 2.0]);
+        assert_eq_num_list!(eval_str_ctx("matrix[1]", &mut ctx).unwrap(), [42.0, 4.0]);
+
+        let code = "\
+            fn get_list() { [1, 2, 3] }
+            get_list()[0] = 42
+        ";
+        assert!(eval_str(code).is_ok());
+    }
 }

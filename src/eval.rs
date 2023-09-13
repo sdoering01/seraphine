@@ -338,6 +338,33 @@ impl Value {
         }
     }
 
+    fn set_index(self, idx: Value, value: Value) -> Result<(), EvalError> {
+        match self {
+            Value::List(l) => {
+                idx.assert_type(Type::Number)?;
+                let Value::Number(index) = idx else {
+                    unreachable!()
+                };
+
+                // TODO: Add overflow checks
+                let index = index as usize;
+                let mut list = l.borrow_mut();
+                if index >= list.len() {
+                    return Err(EvalError::IndexOutOfBounds {
+                        index,
+                        length: list.len(),
+                    });
+                }
+                list[index] = value;
+                Ok(())
+            }
+            _ => {
+                let error = format!("Cannot index value of type {}", self.get_type());
+                Err(EvalError::TypeError(error))
+            }
+        }
+    }
+
     fn add(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
         match (self, rhs) {
@@ -1181,6 +1208,13 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
             let rval = evaluate(rhs, ctx)?;
             ctx.set_var(name, rval.clone());
             rval
+        }
+        Ast::IndexingAssign { value, index, rhs } => {
+            let value = evaluate(value, ctx)?;
+            let index = evaluate(index, ctx)?;
+            let rval = evaluate(rhs, ctx)?;
+            value.set_index(index, rval.clone())?;
+            NULL_VALUE
         }
         Ast::FunctionCall { value, args } => {
             let val = evaluate(value, ctx)?;
