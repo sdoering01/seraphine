@@ -646,8 +646,11 @@ impl<'a> Parser<'a> {
     fn parse_while_loop(&mut self) -> Result<Ast, ParseError> {
         // while ( <expr> ) { <body> }
         self.expect(TokenKind::Keyword(Keyword::While))?;
+        self.skip_newlines();
         self.expect(TokenKind::LParen)?;
+        self.skip_newlines();
         let condition = self.parse_expression()?;
+        self.skip_newlines();
         self.expect(TokenKind::RParen)?;
         self.skip_newlines();
 

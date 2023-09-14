@@ -1901,4 +1901,24 @@ mod tests {
         ";
         assert_eq_num!(eval_str(code).unwrap(), 3077.0);
     }
+
+    #[test]
+    fn test_newlines_in_while_loop() {
+        let code = "\
+            i = 0
+            while
+                (
+                    i < 10
+                )
+            {
+                i = i + 1
+
+                if (i == 5) {
+                    break
+                }
+            }
+            i
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 5.0);
+    }
 }
