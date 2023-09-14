@@ -513,19 +513,19 @@ impl<'a> Parser<'a> {
     fn parse_list_literal(&mut self) -> Result<Ast, ParseError> {
         // [ <val1>, <val2>, ... ]
         self.expect(TokenKind::LBracket)?;
+        self.skip_newlines();
         let mut values = Vec::new();
         while self.peek_kind() != Some(&TokenKind::RBracket) {
             let value = self.parse_expression()?;
             values.push(value);
+            self.skip_newlines();
 
-            match self.peek_kind() {
-                // TODO: Remove guard once trailing commas are allowed
-                Some(TokenKind::Comma) if self.peek_nth_kind(2) != Some(&TokenKind::RBracket) => {
-                    self.next();
-                }
-                // Let `expect` after loop handle the error
-                _ => break,
+            if self.peek_kind() != Some(&TokenKind::Comma) {
+                break;
             }
+
+            self.next();
+            self.skip_newlines();
         }
         self.expect(TokenKind::RBracket)?;
         Ok(Ast::ListLiteral(values))

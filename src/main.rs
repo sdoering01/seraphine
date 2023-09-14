@@ -1781,4 +1781,17 @@ mod tests {
         ";
         assert!(eval_str(code).is_err());
     }
+
+    #[test]
+    fn test_multiline_list_literal() {
+        let code = "\
+            [
+                1
+                ,
+                2
+                ,
+            ]
+        ";
+        assert_eq_num_list!(eval_str(code).unwrap(), [1.0, 2.0]);
+    }
 }
