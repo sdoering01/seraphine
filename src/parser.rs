@@ -147,8 +147,6 @@ struct Parser<'a> {
     idx: usize,
 }
 
-// TODO: Allow newlines in more places (e.g. argument list of function definition)
-// TODO: After that, allow optional comma at the end of argument lists
 impl<'a> Parser<'a> {
     fn new(tokens: &'a [Token]) -> Self {
         Parser { tokens, idx: 0 }
@@ -433,19 +431,19 @@ impl<'a> Parser<'a> {
     fn parse_function_call(&mut self, called_value: Ast) -> Result<Ast, ParseError> {
         // <value>(<val1>, <val2>, ...)
         self.expect(TokenKind::LParen)?;
+        self.skip_newlines();
         let mut args = Vec::new();
         while self.peek_kind() != Some(&TokenKind::RParen) {
             let arg = self.parse_expression()?;
             args.push(arg);
+            self.skip_newlines();
 
-            match self.peek_kind() {
-                // TODO: Remove guard once trailing commas are allowed
-                Some(TokenKind::Comma) if self.peek_nth_kind(2) != Some(&TokenKind::RParen) => {
-                    self.next();
-                }
-                // Let `expect` after loop handle the error
-                _ => break,
+            if self.peek_kind() != Some(&TokenKind::Comma) {
+                break;
             }
+
+            self.next();
+            self.skip_newlines();
         }
         self.expect(TokenKind::RParen)?;
         Ok(Ast::FunctionCall {

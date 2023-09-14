@@ -1753,4 +1753,32 @@ mod tests {
         ";
         assert_eq_num!(eval_str(code).unwrap(), 3.0);
     }
+
+    #[test]
+    fn test_multiline_function_call() {
+        let code = "\
+            fn add(a, b) {
+                a + b
+            }
+            add(
+                1
+                ,
+                2
+            )
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 3.0);
+
+        let code = "\
+            fn add(a, b) {
+                a + b
+            }
+            add
+            (
+                1
+                ,
+                2
+            )
+        ";
+        assert!(eval_str(code).is_err());
+    }
 }
