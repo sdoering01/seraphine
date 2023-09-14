@@ -13,6 +13,7 @@ pub enum Keyword {
     Return,
     True,
     False,
+    Null,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -284,6 +285,7 @@ impl<'a> Tokenizer<'a> {
                         "return" => TokenKind::Keyword(Keyword::Return),
                         "true" => TokenKind::Keyword(Keyword::True),
                         "false" => TokenKind::Keyword(Keyword::False),
+                        "null" => TokenKind::Keyword(Keyword::Null),
                         _ => TokenKind::Identifier(ident),
                     }
                 }

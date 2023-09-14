@@ -7,6 +7,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum Ast {
     Lines(Vec<Ast>),
+    Null,
     NumberLiteral(f64),
     BooleanLiteral(bool),
     StringLiteral(String),
@@ -332,6 +333,7 @@ impl<'a> Parser<'a> {
                     | TokenKind::Number(_)
                     | TokenKind::String(_)
                     | TokenKind::Keyword(Keyword::True | Keyword::False)
+                    | TokenKind::Keyword(Keyword::Null)
                     | TokenKind::Keyword(Keyword::Fn) => {
                         let mut lhs = self.parse_identifier_or_value()?;
                         while let Some(Token {
@@ -385,6 +387,7 @@ impl<'a> Parser<'a> {
                 TokenKind::String(str) => Ast::StringLiteral(str.clone()),
                 TokenKind::Keyword(Keyword::True) => Ast::BooleanLiteral(true),
                 TokenKind::Keyword(Keyword::False) => Ast::BooleanLiteral(false),
+                TokenKind::Keyword(Keyword::Null) => Ast::Null,
                 TokenKind::Keyword(Keyword::Fn) => {
                     // We match on `self.next()`, but the parse function expects the `fn` keyword
                     self.idx -= 1;

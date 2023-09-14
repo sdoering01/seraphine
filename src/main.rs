@@ -101,6 +101,17 @@ mod tests {
         eval_str_ctx(s, &mut Context::new())
     }
 
+    macro_rules! assert_null {
+        ( $value:expr ) => {
+            match $value {
+                $crate::eval::Value::Null => {}
+                value => {
+                    ::std::panic!("value is not null: {:?}", value);
+                }
+            }
+        };
+    }
+
     macro_rules! assert_eq_num {
         ( $left:expr, $right:expr ) => {
             match ($left, $right) {
@@ -415,7 +426,7 @@ mod tests {
         assert_eq_num!(eval_str("\n42\n").unwrap(), 42.0);
         assert_eq_num!(eval_str("42\n").unwrap(), 42.0);
         assert_eq_num!(eval_str("\n42").unwrap(), 42.0);
-        assert_eq_num!(eval_str("\n\n\n").unwrap(), 0.0);
+        assert_null!(eval_str("\n\n\n").unwrap());
     }
 
     #[test]
@@ -865,12 +876,12 @@ mod tests {
                 1
             }
             do_nothing()";
-        assert_eq_num!(eval_str(code).unwrap(), 0.0);
+        assert_null!(eval_str(code).unwrap());
 
         let code = "\
             fn do_nothing() { return }
             do_nothing()";
-        assert_eq_num!(eval_str(code).unwrap(), 0.0);
+        assert_null!(eval_str(code).unwrap());
 
         let code = "\
             fn add(a, b) {
@@ -1665,5 +1676,11 @@ mod tests {
             o == o
         ";
         assert_eq_bool!(eval_str(code).unwrap(), true);
+    }
+
+    #[test]
+    fn test_null() {
+        assert_null!(eval_str("null").unwrap());
+        assert_eq_bool!(eval_str("null == null").unwrap(), true);
     }
 }

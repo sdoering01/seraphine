@@ -21,6 +21,7 @@ pub enum ControlFlow {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
+    Null,
     Number,
     Bool,
     String,
@@ -33,6 +34,7 @@ impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Type::*;
         match self {
+            Null => write!(f, "null"),
             Number => write!(f, "number"),
             Bool => write!(f, "bool"),
             String => write!(f, "string"),
@@ -45,6 +47,7 @@ impl Display for Type {
 
 #[derive(Debug, Clone)]
 pub enum Value {
+    Null,
     Number(f64),
     Bool(bool),
     String(String),
@@ -57,6 +60,7 @@ impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Value::*;
         match self {
+            Null => write!(f, "null"),
             Number(n) => {
                 if n.is_nan() {
                     write!(f, "nan")
@@ -136,6 +140,7 @@ impl Value {
     fn get_type(&self) -> Type {
         use Value::*;
         match self {
+            Null => Type::Null,
             Number(..) => Type::Number,
             Bool(..) => Type::Bool,
             String(..) => Type::String,
@@ -162,6 +167,7 @@ impl Value {
 
     fn as_bool(&self) -> bool {
         match self {
+            Value::Null => false,
             Value::Number(n) => *n != 0.0,
             Value::Bool(b) => *b,
             Value::String(s) => !s.is_empty(),
@@ -569,6 +575,7 @@ impl Value {
             (Function(l), Function(r)) => l.is_equal(r),
             (List(l), List(r)) => Rc::ptr_eq(l, r),
             (Object(l), Object(r)) => Rc::ptr_eq(l, r),
+            (Null, Null) => true,
             _ => false,
         }
     }
@@ -669,7 +676,7 @@ impl Value {
     }
 }
 
-const NULL_VALUE: Value = Value::Number(0.0);
+const NULL_VALUE: Value = Value::Null;
 
 #[derive(Clone)]
 pub struct Function {
@@ -1306,6 +1313,7 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
             }
             result
         }
+        Ast::Null => NULL_VALUE,
         Ast::NumberLiteral(n) => Value::Number(*n),
         Ast::BooleanLiteral(b) => Value::Bool(*b),
         Ast::StringLiteral(s) => Value::String(s.clone()),
