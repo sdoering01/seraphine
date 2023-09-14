@@ -1440,6 +1440,44 @@ mod tests {
     }
 
     #[test]
+    fn test_multiline_obeject_literals() {
+        let code = "\
+            {
+                a: 1,
+                b: 2,
+            }
+        ";
+        assert_eq_num_object!(eval_str(code).unwrap(), { "a" => 1.0, "b" => 2.0 });
+
+        let code = "\
+            {
+                a
+                    :
+            1
+            }
+        ";
+        assert_eq_num_object!(eval_str(code).unwrap(), { "a" => 1.0 });
+
+        let code = "\
+            o = {
+                a() {
+                    1
+                }
+            }
+            o.a()
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
+
+        let code = "\
+            {
+                a() { 1 }
+                b() { 2 }
+            }
+        ";
+        assert!(eval_str(code).is_err());
+    }
+
+    #[test]
     fn test_object_get() {
         let code = "\
             obj = { a: 1, b: 2 }

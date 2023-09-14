@@ -464,20 +464,24 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LBrace)?;
         let mut key_value_pairs = Vec::new();
         while self.peek_kind() != Some(&TokenKind::RBrace) {
+            self.skip_newlines();
             let key = self.expect_identifier()?.to_string();
+            self.skip_newlines();
             let value = match self.peek() {
                 Some(Token {
                     kind: TokenKind::Colon,
                     ..
                 }) => {
                     self.next();
+                    self.skip_newlines();
                     self.parse_expression()?
                 }
                 Some(Token {
                     kind: TokenKind::LParen,
                     ..
-                }) => self.parse_function_definition_without_fn(false)?,
-                // TODO: Remember to change this once newlines are allowed
+                }) => {
+                    self.parse_function_definition_without_fn(false)?
+                },
                 Some(Token {
                     kind: TokenKind::Comma | TokenKind::RBrace,
                     ..
@@ -492,14 +496,13 @@ impl<'a> Parser<'a> {
             };
             key_value_pairs.push((key, value));
 
-            match self.peek_kind() {
-                // TODO: Remove guard once trailing commas are allowed
-                Some(TokenKind::Comma) if self.peek_nth_kind(2) != Some(&TokenKind::RBrace) => {
-                    self.next();
-                }
-                // Let `expect` after loop handle the error
-                _ => break,
+            self.skip_newlines();
+            if self.peek_kind() != Some(&TokenKind::Comma) {
+                break;
             }
+
+            self.next();
+            self.skip_newlines();
         }
         self.expect(TokenKind::RBrace)?;
         Ok(Ast::ObjectLiteral(key_value_pairs))
