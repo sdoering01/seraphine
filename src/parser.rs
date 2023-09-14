@@ -413,6 +413,8 @@ impl<'a> Parser<'a> {
             None => return Err(ParseError::NoTokensLeft),
         };
         loop {
+            // Don't allow newlines before LParen and LBracket to avoid confusion with expressions
+            // in the next non-empty line.
             match self.peek_kind() {
                 Some(TokenKind::LParen) => {
                     ast = self.parse_function_call(ast)?;
@@ -420,8 +422,10 @@ impl<'a> Parser<'a> {
                 Some(TokenKind::LBracket) => {
                     ast = self.parse_indexing(ast)?;
                 }
-                Some(TokenKind::Dot) => {
+                _ if self.peek_next_non_newline_kind() == Some(&TokenKind::Dot) => {
+                    self.skip_newlines();
                     self.next();
+                    self.skip_newlines();
                     let member = self.expect_identifier()?;
                     ast = Ast::MemberAccess {
                         value: Box::new(ast),

@@ -1821,4 +1821,29 @@ mod tests {
         ";
         assert_eq_num!(eval_str(code).unwrap(), 1.0);
     }
+
+    #[test]
+    fn test_newline_in_member_access() {
+        let code = r#"
+            "  abc "
+                .trim()
+                .slice(1, 2)
+        "#;
+        assert_eq_str!(eval_str(code).unwrap(), "b");
+
+        let code = "\
+            o = {
+                a: 1
+            }
+            o
+            .
+            a
+            =
+            2
+            o
+            .
+            a
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 2.0);
+    }
 }
