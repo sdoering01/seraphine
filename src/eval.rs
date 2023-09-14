@@ -585,10 +585,7 @@ impl Value {
     }
 
     fn unequal(self, rhs: Self) -> Result<Value, EvalError> {
-        let Value::Bool(eq) = self.equal(rhs)? else {
-            unreachable!()
-        };
-        Ok(Value::Bool(!eq))
+        Ok(Value::Bool(!self.inner_equal(&rhs)))
     }
 
     fn less_than(self, rhs: Self) -> Result<Value, EvalError> {
