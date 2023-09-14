@@ -1203,6 +1203,29 @@ mod tests {
         assert_eq_bool!(eval_str_ctx("add1_3 == add1_3", &mut ctx).unwrap(), true);
         assert_eq_bool!(eval_str_ctx("add1_2 == add1_3", &mut ctx).unwrap(), true);
         assert_eq_bool!(eval_str_ctx("add1_2 == add2_2", &mut ctx).unwrap(), false);
+
+        let code = "\
+            o = { answer() { 42 } }
+            o.answer == o.answer
+        ";
+        assert_eq_bool!(eval_str(code).unwrap(), true);
+
+        let code = "\
+            fn answer() { 42 }
+            o = { answer }
+            
+            o.answer == answer
+        ";
+        assert_eq_bool!(eval_str(code).unwrap(), false);
+
+        let code = "\
+            fn answer() { 42 }
+            o1 = { answer }
+            o2 = { answer }
+            
+            o1.answer == o2.answer
+        ";
+        assert_eq_bool!(eval_str(code).unwrap(), false);
     }
 
     #[test]
@@ -1592,5 +1615,55 @@ mod tests {
         ";
         eval_str_ctx(code, &mut ctx).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "[{ lst: [...] }]");
+    }
+
+    #[test]
+    fn test_list_equality() {
+        assert_eq_bool!(eval_str("[] == []").unwrap(), false);
+        assert_eq_bool!(eval_str("[1, 2, 3] == [1, 2, 3]").unwrap(), false);
+
+        let code = "\
+            l = []
+            l == l
+        ";
+        assert_eq_bool!(eval_str(code).unwrap(), true);
+
+        let code = "\
+            l1 = []
+            l2 = []
+            l1 == l2
+        ";
+        assert_eq_bool!(eval_str(code).unwrap(), false);
+
+        let code = "\
+            l = [1, 2, 3]
+            l == l
+        ";
+        assert_eq_bool!(eval_str(code).unwrap(), true);
+    }
+
+    #[test]
+    fn test_object_equality() {
+        assert_eq_bool!(eval_str("{} == {}").unwrap(), false);
+        assert_eq_bool!(eval_str("{a: 1, b: 2} == {a: 1, b: 2}").unwrap(), false);
+
+        let code = "\
+            o = {}
+            o == o
+        ";
+        assert_eq_bool!(eval_str(code).unwrap(), true);
+
+        let code = "\
+            o1 = {}
+            o2 = {}
+            o1 == o2
+        ";
+        assert_eq_bool!(eval_str(code).unwrap(), false);
+
+        let code = "\
+            o = {a: 1, b: 2}
+            o == o
+        ";
+        assert_eq_bool!(eval_str(code).unwrap(), true);
     }
 }

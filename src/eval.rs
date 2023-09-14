@@ -567,6 +567,8 @@ impl Value {
             (Bool(l), Bool(r)) => l == r,
             (String(l), String(r)) => l == r,
             (Function(l), Function(r)) => l.is_equal(r),
+            (List(l), List(r)) => Rc::ptr_eq(l, r),
+            (Object(l), Object(r)) => Rc::ptr_eq(l, r),
             _ => false,
         }
     }
