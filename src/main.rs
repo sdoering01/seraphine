@@ -430,13 +430,6 @@ mod tests {
     }
 
     #[test]
-    fn test_newlines_not_allowed() {
-        assert!(eval_str("1 + \n 2").is_err());
-        assert!(eval_str("sin(pi\n/2)").is_err());
-        assert!(eval_str("1 * (2 + \n 3)").is_err());
-    }
-
-    #[test]
     fn test_user_functions() {
         let code = "\
             fn add(a, b, c) {\n\
@@ -1876,5 +1869,28 @@ mod tests {
             ]
         ";
         assert!(eval_str(code).is_err());
+    }
+
+    #[test]
+    fn test_newlines_in_expressions() {
+        let code = "\
+            a = 1
+
+            a
+            +
+            (
+            -
+            2
+            +
+            3
+            *
+            4
+            ^
+            5
+            +
+            6
+            )
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 3077.0);
     }
 }

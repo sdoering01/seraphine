@@ -272,11 +272,13 @@ impl<'a> Parser<'a> {
         while let Some(Token {
             kind: TokenKind::Operator(op),
             pos,
-        }) = self.peek()
+        }) = self.peek_next_non_newline()
         {
             let op = *op;
             let pos = *pos;
+            self.skip_newlines();
             self.next();
+            self.skip_newlines();
             let precedence = op_precedence(op, true, pos)?;
             let rhs = self.parse_expression_with_min_precedence(precedence + 1)?;
             lhs = combine_lhs_rhs(op, lhs, rhs)?;
@@ -318,6 +320,7 @@ impl<'a> Parser<'a> {
                     TokenKind::Operator(Operator::Minus) => {
                         let pos = token.pos;
                         self.next();
+                        self.skip_newlines();
                         let unary_minus_precedence = op_precedence(Operator::Minus, false, pos)?;
                         // Not `+ 1` like in the other cases so we can take multiple unary minus operators
                         // after each other
@@ -328,6 +331,7 @@ impl<'a> Parser<'a> {
                     TokenKind::Operator(Operator::Exclamation) => {
                         let pos = token.pos;
                         self.next();
+                        self.skip_newlines();
                         let boolean_negate_precedence =
                             op_precedence(Operator::Exclamation, false, pos)?;
                         // Not `+ 1` like in the other cases so we can take multiple boolean negate operators
@@ -349,12 +353,14 @@ impl<'a> Parser<'a> {
                         while let Some(Token {
                             kind: TokenKind::Operator(op),
                             pos,
-                        }) = self.peek()
+                        }) = self.peek_next_non_newline()
                         {
                             let op = *op;
                             let precedence = op_precedence(op, true, *pos)?;
                             if precedence >= min_precedence {
+                                self.skip_newlines();
                                 self.next();
+                                self.skip_newlines();
                                 let rhs =
                                     self.parse_expression_with_min_precedence(precedence + 1)?;
                                 lhs = combine_lhs_rhs(op, lhs, rhs)?;
@@ -378,7 +384,9 @@ impl<'a> Parser<'a> {
         let mut ast = match self.next() {
             Some(token) => match &token.kind {
                 TokenKind::LParen => {
+                    self.skip_newlines();
                     let inner = self.parse_expression()?;
+                    self.skip_newlines();
                     self.expect(TokenKind::RParen)?;
                     Ast::Brackets(Box::new(inner))
                 }
