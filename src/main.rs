@@ -1921,4 +1921,38 @@ mod tests {
         ";
         assert_eq_num!(eval_str(code).unwrap(), 5.0);
     }
+
+    #[test]
+    fn test_newlines_in_if_statement() {
+        let code = "\
+            a = 0
+            if
+                (
+                    true
+                )
+            {
+                a = 1
+            }
+            else if
+                (
+                    false
+                )
+            {
+                a = 2
+            }
+            else
+            {
+                a = 3
+            }
+            a
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
+
+        let code = "\
+            if (true) { }
+            else
+            if (false) { }
+        ";
+        assert!(eval_str(code).is_err());
+    }
 }

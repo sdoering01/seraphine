@@ -607,8 +607,11 @@ impl<'a> Parser<'a> {
     fn parse_if_statement(&mut self) -> Result<Ast, ParseError> {
         // if ( <expr> ) { <body> } [ else if ( <expr> ) { <body> } [ ... ] ] [ else { <body> } ]
         self.expect(TokenKind::Keyword(Keyword::If))?;
+        self.skip_newlines();
         self.expect(TokenKind::LParen)?;
+        self.skip_newlines();
         let condition = self.parse_expression()?;
+        self.skip_newlines();
         self.expect(TokenKind::RParen)?;
         self.skip_newlines();
         self.expect(TokenKind::LBrace)?;
