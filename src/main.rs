@@ -170,6 +170,39 @@ mod tests {
         };
     }
 
+    /// Asserts that the given object has the given keys and values.
+    ///
+    /// Note that the object syntax is different from the one used in the language, since
+    /// `macro_rules` cannot parse it.
+    ///
+    /// Example:
+    /// ```rust
+    /// assert_eq_num_object!(eval_str("{ a: 1, b: 2 }"), { "a" => 1.0, "b" => 2.0 });
+    /// ```
+    macro_rules! assert_eq_num_object {
+        ( $obj:expr, { $( $key:expr => $val:expr ),* } ) => {
+            {
+                let $crate::eval::Value::Object(obj) = $obj else {
+                    ::std::panic!("value is not an object");
+                };
+                #[allow(unused_variables)]
+                let obj = obj.borrow();
+                #[allow(unused_mut)]
+                let mut keys = 0;
+                $(
+                    let got_val = obj.get($key);
+                    ::std::assert!(got_val.is_some(), r#"key "{}" not found in object"#, $key);
+                    let $crate::eval::Value::Number(got) = got_val.unwrap() else {
+                        ::std::panic!("value is not a number");
+                    };
+                    ::std::assert_eq!(*got, $val, "at key {}", $key);
+                    keys += 1;
+                )*
+                ::std::assert_eq!(keys, obj.len(), "length mismatch");
+            }
+        };
+    }
+
     #[test]
     fn test_eval_str() {
         assert!(eval_str("").is_ok());
@@ -1333,5 +1366,231 @@ mod tests {
             get_list()[0] = 42
         ";
         assert!(eval_str(code).is_ok());
+    }
+
+    #[test]
+    fn test_object_literals() {
+        let code = "{}";
+        assert_eq_num_object!(eval_str(code).unwrap(), {});
+
+        let code = "{ a: 1 }";
+        assert_eq_num_object!(eval_str(code).unwrap(), { "a" => 1.0 });
+
+        let code = "{ a: 1, b: 2 }";
+        assert_eq_num_object!(eval_str(code).unwrap(), { "a" => 1.0, "b" => 2.0 });
+
+        let code = "{ a: 1, a: 2 }";
+        assert_eq_num_object!(eval_str(code).unwrap(), { "a" => 2.0 });
+
+        let code = "\
+            a = 1
+            b = 2
+            { a, b }
+        ";
+        assert_eq_num_object!(eval_str(code).unwrap(), { "a" => 1.0, "b" => 2.0 });
+
+        let code = "\
+            a = 1
+            { a, a: 2 }
+        ";
+        assert_eq_num_object!(eval_str(code).unwrap(), { "a" => 2.0 });
+
+        let code = "{ 1: 1 }";
+        assert!(eval_str(code).is_err());
+
+        let code = "{ a: }";
+        assert!(eval_str(code).is_err());
+
+        let code = "{ a: }";
+        assert!(eval_str(code).is_err());
+    }
+
+    #[test]
+    fn test_object_get() {
+        let code = "\
+            obj = { a: 1, b: 2 }
+            obj.a
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
+
+        let code = "\
+            { a: 1, b: 2 }.a
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
+
+        let code = "\
+            obj = { a: 1, b: 2 }
+            obj.c
+        ";
+        assert!(eval_str(code).is_err());
+
+        let code = r#"
+            obj = { a: 1, b: 2 }
+            obj["a"]
+        "#;
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
+
+        let code = r#"
+            obj = { a: 1, b: 2 }
+            obj["c"]
+        "#;
+        assert!(eval_str(code).is_err());
+
+        let code = "\
+            obj = { a: 1, b: 2 }
+            obj[1]
+        ";
+        assert!(eval_str(code).is_err());
+
+        let code = r#"
+            key = "a"
+            obj = { a: 1, b: 2 }
+            obj[key]
+        "#;
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
+
+        let code = r#"
+            fn get_key() { "a" }
+            obj = { a: 1, b: 2 }
+            obj[get_key()]
+        "#;
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
+
+        let code = "\
+            obj = { inner: { answer: 42 } }
+            obj.inner.answer
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 42.0);
+
+        let code = r#"
+            obj = { inner: { answer: 42 } }
+            obj["inner"].answer
+        "#;
+        assert_eq_num!(eval_str(code).unwrap(), 42.0);
+    }
+
+    #[test]
+    fn test_object_set() {
+        let code = "\
+            obj = {}
+            obj.a = 42
+            obj
+        ";
+        assert_eq_num_object!(eval_str(code).unwrap(), { "a" => 42.0 });
+
+        let code = "\
+            obj = { a: 1, b: 2 }
+            obj.a = 42
+            obj
+        ";
+        assert_eq_num_object!(eval_str(code).unwrap(), { "a" => 42.0, "b" => 2.0 });
+
+        let code = r#"
+            obj = { a: 1, b: 2 }
+            obj["a"] = 42
+            obj
+        "#;
+        assert_eq_num_object!(eval_str(code).unwrap(), { "a" => 42.0, "b" => 2.0 });
+
+        let code = r#"
+            key = "a"
+            obj = { a: 1, b: 2 }
+            obj[key] = 42
+            obj
+        "#;
+        assert_eq_num_object!(eval_str(code).unwrap(), { "a" => 42.0, "b" => 2.0 });
+
+        let code = r#"
+            key = "a"
+            obj = { a: 1, b: 2 }
+            obj[key] = 42
+            obj
+        "#;
+        assert_eq_num_object!(eval_str(code).unwrap(), { "a" => 42.0, "b" => 2.0 });
+
+        let code = r#"
+            fn get_key() { "a" }
+            obj = { a: 1, b: 2 }
+            obj[get_key()] = 42
+            obj
+        "#;
+        assert_eq_num_object!(eval_str(code).unwrap(), { "a" => 42.0, "b" => 2.0 });
+
+        let code = r#"
+            obj = { inner: { answer: 21 } }
+            obj.inner.answer = 42
+            obj.inner
+        "#;
+        assert_eq_num_object!(eval_str(code).unwrap(), { "answer" => 42.0 });
+    }
+
+    #[test]
+    fn test_object_methods() {
+        let code = "
+            obj = { add: fn (a, b) { a + b } }
+            obj.add(1, 2)
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 3.0);
+
+        let code = "
+            obj = { add(a, b) { a + b } }
+            obj.add(1, 2)
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 3.0);
+
+        let code = "
+            obj = { num: 0, increment() { this.num = this.num + 1 } }
+            obj.increment()
+            obj.num
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
+
+        let code = "
+            fn increment() {
+                this.num = this.num + 1
+            }
+
+            obj = { num: 0, increment }
+            obj.increment()
+            obj.num
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
+
+        let code = "
+            o1 = { num: 1, get_num() { this.num } }
+            o2 = { num: 2, get_num: o1.get_num }
+            o2.get_num()
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 2.0);
+    }
+
+    #[test]
+    fn test_self_referential_print() {
+        let (mut stdout_reader, stdout_writer) = io::create_channel_reader_writer();
+        let mut ctx = Context::builder().stdout(stdout_writer).build();
+
+        let code = "\
+            obj = {}
+            obj.a = obj
+            print(obj)
+        ";
+        eval_str_ctx(code, &mut ctx).unwrap();
+        assert_eq!(stdout_reader.read_available_to_string(), "{ a: { ... } }");
+
+        let code = "\
+            lst = []
+            lst.push(lst)
+            print(lst)
+        ";
+        eval_str_ctx(code, &mut ctx).unwrap();
+        assert_eq!(stdout_reader.read_available_to_string(), "[[...]]");
+
+        let code = "\
+            lst = []
+            lst.push({lst})
+            print(lst)
+        ";
+        eval_str_ctx(code, &mut ctx).unwrap();
+        assert_eq!(stdout_reader.read_available_to_string(), "[{ lst: [...] }]");
     }
 }

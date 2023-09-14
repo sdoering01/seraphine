@@ -11,6 +11,7 @@ pub enum Ast {
     BooleanLiteral(bool),
     StringLiteral(String),
     ListLiteral(Vec<Ast>),
+    ObjectLiteral(Vec<(String, Ast)>),
     Variable(String),
     Add(Box<Ast>, Box<Ast>),
     Subtract(Box<Ast>, Box<Ast>),
@@ -33,6 +34,11 @@ pub enum Ast {
     IndexingAssign {
         value: Box<Ast>,
         index: Box<Ast>,
+        rhs: Box<Ast>,
+    },
+    MemberAssign {
+        value: Box<Ast>,
+        member: String,
         rhs: Box<Ast>,
     },
     FunctionCall {
@@ -228,6 +234,15 @@ impl<'a> Parser<'a> {
                         rhs: Box::new(rhs),
                     });
                 }
+                Ast::MemberAccess { value, member } => {
+                    self.next();
+                    let rhs = self.parse_expression()?;
+                    return Ok(Ast::MemberAssign {
+                        value,
+                        member,
+                        rhs: Box::new(rhs),
+                    });
+                }
                 _ => {}
             }
         }
@@ -311,6 +326,7 @@ impl<'a> Parser<'a> {
                         Ok(Ast::BooleanNegate(Box::new(rhs)))
                     }
                     TokenKind::LParen
+                    | TokenKind::LBrace
                     | TokenKind::LBracket
                     | TokenKind::Identifier(_)
                     | TokenKind::Number(_)
@@ -353,6 +369,11 @@ impl<'a> Parser<'a> {
                     let inner = self.parse_expression()?;
                     self.expect(TokenKind::RParen)?;
                     Ast::Brackets(Box::new(inner))
+                }
+                TokenKind::LBrace => {
+                    // We match on `self.next()`, but the parse function expects the `{` token
+                    self.idx -= 1;
+                    self.parse_object_literal()?
                 }
                 TokenKind::LBracket => {
                     // We match on `self.next()`, but the parse function expects the `[` token
@@ -435,6 +456,52 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_object_literal(&mut self) -> Result<Ast, ParseError> {
+        // { <key1>[: <val1> | <unnamed_function_definition_without_fn>], ... }
+        self.expect(TokenKind::LBrace)?;
+        let mut key_value_pairs = Vec::new();
+        while self.peek_kind() != Some(&TokenKind::RBrace) {
+            let key = self.expect_identifier()?.to_string();
+            let value = match self.peek() {
+                Some(Token {
+                    kind: TokenKind::Colon,
+                    ..
+                }) => {
+                    self.next();
+                    self.parse_expression()?
+                }
+                Some(Token {
+                    kind: TokenKind::LParen,
+                    ..
+                }) => self.parse_function_definition_without_fn(false)?,
+                // TODO: Remember to change this once newlines are allowed
+                Some(Token {
+                    kind: TokenKind::Comma | TokenKind::RBrace,
+                    ..
+                }) => Ast::Variable(key.clone()),
+                Some(t) => {
+                    return Err(ParseError::UnexpectedToken {
+                        token: t.clone(),
+                        expected: Some(TokenKind::Colon),
+                    })
+                }
+                None => return Err(ParseError::NoTokensLeft),
+            };
+            key_value_pairs.push((key, value));
+
+            match self.peek_kind() {
+                // TODO: Remove guard once trailing commas are allowed
+                Some(TokenKind::Comma) if self.peek_nth_kind(2) != Some(&TokenKind::RBrace) => {
+                    self.next();
+                }
+                // Let `expect` after loop handle the error
+                _ => break,
+            }
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(Ast::ObjectLiteral(key_value_pairs))
+    }
+
     fn parse_list_literal(&mut self) -> Result<Ast, ParseError> {
         // [ <val1>, <val2>, ... ]
         self.expect(TokenKind::LBracket)?;
@@ -457,8 +524,13 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_function_definition(&mut self, named: bool) -> Result<Ast, ParseError> {
-        // fn [ <name> ] (<arg1>, <arg2>, ...) { <body> }
+        // fn <function_definition_without_fn>
         self.expect(TokenKind::Keyword(Keyword::Fn))?;
+        self.parse_function_definition_without_fn(named)
+    }
+
+    fn parse_function_definition_without_fn(&mut self, named: bool) -> Result<Ast, ParseError> {
+        // [ <name> ] (<arg1>, <arg2>, ...) { <body> }
         let fn_name = if named {
             Some(self.expect_identifier()?.to_string())
         } else {

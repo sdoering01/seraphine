@@ -26,6 +26,7 @@ pub enum Type {
     String,
     Function,
     List,
+    Object,
 }
 
 impl Display for Type {
@@ -37,6 +38,7 @@ impl Display for Type {
             String => write!(f, "string"),
             Function => write!(f, "function"),
             List => write!(f, "list"),
+            Object => write!(f, "object"),
         }
     }
 }
@@ -46,8 +48,9 @@ pub enum Value {
     Number(f64),
     Bool(bool),
     String(String),
-    Function(Rc<Function>),
+    Function(Function),
     List(Rc<RefCell<Vec<Value>>>),
+    Object(Rc<RefCell<HashMap<String, Value>>>),
 }
 
 impl Display for Value {
@@ -64,15 +67,19 @@ impl Display for Value {
             Bool(b) => write!(f, "{}", b),
             String(s) => write!(f, r#""{}""#, s),
             Function(func) => write!(f, "{:?}", func),
-            List(_) => {
-                print_potentially_self_referential(self, f, &mut Vec::new())
-                // TODO: This could fail when the list is in itself
-            }
+            List(_) | Object(_) => print_potentially_self_referential(self, f),
         }
     }
 }
 
 fn print_potentially_self_referential(
+    value: &Value,
+    f: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    print_potentially_self_referential_recursive(value, f, &mut Vec::new())
+}
+
+fn print_potentially_self_referential_recursive(
     value: &Value,
     f: &mut std::fmt::Formatter<'_>,
     refs: &mut Vec<usize>,
@@ -85,19 +92,41 @@ fn print_potentially_self_referential(
             if refs.contains(&pointer) {
                 write!(f, "...")?;
             } else {
-                refs.push(lst.as_ptr() as usize);
+                refs.push(pointer);
                 let mut first = true;
                 for item in lst.borrow().iter() {
                     if !first {
                         write!(f, ", ")?;
                     }
                     first = false;
-                    print_potentially_self_referential(item, f, refs)?;
+                    print_potentially_self_referential_recursive(item, f, refs)?;
                 }
                 refs.pop();
             }
 
             write!(f, "]")
+        }
+        Value::Object(obj) => {
+            write!(f, "{{ ")?;
+
+            let pointer = obj.as_ptr() as usize;
+            if refs.contains(&pointer) {
+                write!(f, "...")?;
+            } else {
+                refs.push(pointer);
+                let mut first = true;
+                for (key, value) in obj.borrow().iter() {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    first = false;
+                    write!(f, "{}: ", key)?;
+                    print_potentially_self_referential_recursive(value, f, refs)?;
+                }
+                refs.pop();
+            }
+
+            write!(f, " }}")
         }
         non_referential => write!(f, "{}", non_referential),
     }
@@ -112,6 +141,7 @@ impl Value {
             String(..) => Type::String,
             Function(..) => Type::Function,
             List(..) => Type::List,
+            Object(..) => Type::Object,
         }
     }
 
@@ -137,6 +167,7 @@ impl Value {
             Value::String(s) => !s.is_empty(),
             Value::Function(..) => true,
             Value::List(lst) => !lst.borrow().is_empty(),
+            Value::Object(obj) => !obj.borrow().is_empty(),
         }
     }
 
@@ -180,7 +211,7 @@ impl Value {
                             Ok(Value::String(trimmed))
                         },
                     );
-                    Ok(Value::Function(Rc::new(func)))
+                    Ok(Value::Function(func))
                 }
                 "concat" => {
                     let func = Function::new_builtin(
@@ -199,7 +230,7 @@ impl Value {
                             Ok(Value::String(s))
                         },
                     );
-                    Ok(Value::Function(Rc::new(func)))
+                    Ok(Value::Function(func))
                 }
                 "slice" => {
                     let func = Function::new_builtin(
@@ -225,7 +256,7 @@ impl Value {
                             Ok(Value::String(sliced.to_string()))
                         },
                     );
-                    Ok(Value::Function(Rc::new(func)))
+                    Ok(Value::Function(func))
                 }
                 _ => Err(EvalError::NoSuchMember {
                     r#type: Type::String,
@@ -253,7 +284,7 @@ impl Value {
                             Ok(item)
                         },
                     );
-                    Ok(Value::Function(Rc::new(func)))
+                    Ok(Value::Function(func))
                 }
                 "set" => {
                     let func = Function::new_builtin(
@@ -283,7 +314,7 @@ impl Value {
                             Ok(NULL_VALUE)
                         },
                     );
-                    Ok(Value::Function(Rc::new(func)))
+                    Ok(Value::Function(func))
                 }
                 "push" => {
                     let func = Function::new_builtin(
@@ -298,17 +329,46 @@ impl Value {
                             Ok(Value::List(l))
                         },
                     );
-                    Ok(Value::Function(Rc::new(func)))
+                    Ok(Value::Function(func))
                 }
                 _ => Err(EvalError::NoSuchMember {
                     r#type: Type::List,
                     member_name: member.to_string(),
                 }),
             },
+            Value::Object(o) => {
+                let obj = o.borrow();
+                // TODO: Put this functionality in a method of a new Object type
+                if let Some(value) = obj.get(member) {
+                    match value.clone() {
+                        Value::Function(f) => Ok(Value::Function(f.with_this(Some(self.clone())))),
+                        v => Ok(v),
+                    }
+                } else {
+                    Err(EvalError::NoSuchMember {
+                        r#type: Type::Object,
+                        member_name: member.to_string(),
+                    })
+                }
+            }
             _ => Err(EvalError::NoSuchMember {
                 r#type: self.get_type(),
                 member_name: member.to_string(),
             }),
+        }
+    }
+
+    fn set_member(self, member: &str, value: Value) -> Result<(), EvalError> {
+        match self {
+            Value::Object(o) => {
+                let mut obj = o.borrow_mut();
+                obj.insert(member.to_string(), value);
+                Ok(())
+            }
+            _ => {
+                let error = format!("Cannot set member of type {}", self.get_type());
+                Err(EvalError::TypeError(error))
+            }
         }
     }
 
@@ -330,6 +390,25 @@ impl Value {
                     });
                 }
                 Ok(list[index].clone())
+            }
+            Value::Object(ref o) => {
+                idx.assert_type(Type::String)?;
+                let Value::String(index) = idx else {
+                    unreachable!()
+                };
+
+                // TODO: Put this functionality in a method of a new Object type
+                if let Some(value) = o.borrow().get(&index) {
+                    match value.clone() {
+                        Value::Function(f) => Ok(Value::Function(f.with_this(Some(self.clone())))),
+                        v => Ok(v),
+                    }
+                } else {
+                    Err(EvalError::NoSuchMember {
+                        r#type: Type::Object,
+                        member_name: index,
+                    })
+                }
             }
             _ => {
                 let error = format!("Cannot index value of type {}", self.get_type());
@@ -356,6 +435,15 @@ impl Value {
                     });
                 }
                 list[index] = value;
+                Ok(())
+            }
+            Value::Object(o) => {
+                idx.assert_type(Type::String)?;
+                let Value::String(index) = idx else {
+                    unreachable!()
+                };
+
+                o.borrow_mut().insert(index, value);
                 Ok(())
             }
             _ => {
@@ -471,16 +559,20 @@ impl Value {
         Ok(Value::Bool(!self.as_bool()))
     }
 
-    fn equal(self, rhs: Self) -> Result<Value, EvalError> {
+    fn inner_equal(&self, rhs: &Self) -> bool {
         use Value::*;
-        let eq = match (self, rhs) {
+
+        match (self, rhs) {
             (Number(l), Number(r)) => l == r,
             (Bool(l), Bool(r)) => l == r,
             (String(l), String(r)) => l == r,
-            (Function(l), Function(r)) => Rc::as_ptr(&l) == Rc::as_ptr(&r),
+            (Function(l), Function(r)) => l.is_equal(r),
             _ => false,
-        };
-        Ok(Bool(eq))
+        }
+    }
+
+    fn equal(self, rhs: Self) -> Result<Value, EvalError> {
+        Ok(Value::Bool(self.inner_equal(&rhs)))
     }
 
     fn unequal(self, rhs: Self) -> Result<Value, EvalError> {
@@ -577,37 +669,19 @@ impl Value {
 
 const NULL_VALUE: Value = Value::Number(0.0);
 
-type BuiltinFunctionClosure =
-    Box<dyn Fn(&mut Context, Option<Value>, &[Value]) -> Result<Value, EvalError>>;
-
-pub enum Function {
-    Builtin {
-        receiver: Option<Value>,
-        name: String,
-        n_args: Option<usize>,
-        func: BuiltinFunctionClosure,
-    },
-    UserDefined {
-        name: Option<String>,
-        arg_names: Vec<String>,
-        body: Ast,
-    },
+#[derive(Clone)]
+pub struct Function {
+    kind: Rc<FunctionKind>,
+    receiver: Option<Box<Value>>,
 }
 
 impl Debug for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Function::Builtin { name, .. } => {
-                write!(f, "built-in function '{}'", name)
-            }
-            Function::UserDefined { name, .. } => {
-                if let Some(name) = name {
-                    write!(f, "function '{}'", name)
-                } else {
-                    write!(f, "unnamed function")
-                }
-            }
+        write!(f, "{:?}", self.kind)?;
+        if let Some(receiver) = &self.receiver {
+            write!(f, " on {}", receiver)?;
         }
+        Ok(())
     }
 }
 
@@ -621,11 +695,13 @@ impl Function {
     where
         F: Fn(&mut Context, Option<Value>, &[Value]) -> Result<Value, EvalError> + 'static,
     {
-        Self::Builtin {
-            receiver,
-            name: name.into(),
-            n_args,
-            func: Box::new(func),
+        Function {
+            kind: Rc::new(FunctionKind::Builtin {
+                name: name.into(),
+                n_args,
+                func: Box::new(func),
+            }),
+            receiver: receiver.map(Box::new),
         }
     }
 
@@ -645,24 +721,30 @@ impl Function {
                 });
             }
         }
-        Ok(Self::UserDefined {
-            name: func_name,
-            arg_names,
-            body,
+
+        Ok(Function {
+            kind: Rc::new(FunctionKind::UserDefined {
+                name: func_name,
+                arg_names,
+                body,
+            }),
+            receiver: None,
         })
     }
 
     pub fn get_name(&self) -> Option<String> {
-        match self {
-            Function::Builtin { name, .. } => Some(name.clone()),
-            Function::UserDefined { name, .. } => name.clone(),
+        match self.kind.as_ref() {
+            FunctionKind::Builtin { name, .. } => Some(name.clone()),
+            FunctionKind::UserDefined { name, .. } => name.clone(),
         }
     }
 
     pub fn call(&self, ctx: &mut Context, args: &[Value]) -> Result<Value, EvalError> {
-        match self {
-            Function::Builtin { func, receiver, .. } => func(ctx, receiver.clone(), args),
-            Function::UserDefined {
+        let receiver = self.receiver.as_ref().map(|r| r.as_ref().to_owned());
+
+        match self.kind.as_ref() {
+            FunctionKind::Builtin { func, .. } => func(ctx, receiver, args),
+            FunctionKind::UserDefined {
                 arg_names, body, ..
             } => {
                 if ctx.call_stack.len() >= CALL_STACK_SIZE_LIMIT - 1 {
@@ -670,6 +752,9 @@ impl Function {
                 }
 
                 let mut scope = Scope::new();
+                if let Some(recv) = receiver {
+                    scope.set_var("this", recv);
+                }
                 for (name, value) in arg_names.iter().zip(args.iter()) {
                     scope.set_var(name, value.clone());
                 }
@@ -696,9 +781,58 @@ impl Function {
     }
 
     fn get_arg_count(&self) -> Option<usize> {
+        match self.kind.as_ref() {
+            FunctionKind::Builtin { n_args, .. } => *n_args,
+            FunctionKind::UserDefined { arg_names, .. } => Some(arg_names.len()),
+        }
+    }
+
+    fn is_equal(&self, other: &Function) -> bool {
+        Rc::ptr_eq(&self.kind, &other.kind)
+            && match (&self.receiver, &other.receiver) {
+                (Some(l), Some(r)) => l.inner_equal(r),
+                (None, None) => true,
+                _ => false,
+            }
+    }
+
+    fn with_this(self, this: Option<Value>) -> Self {
+        Function {
+            kind: self.kind,
+            receiver: this.map(Box::new),
+        }
+    }
+}
+
+type BuiltinFunctionClosure =
+    Box<dyn Fn(&mut Context, Option<Value>, &[Value]) -> Result<Value, EvalError>>;
+
+pub enum FunctionKind {
+    Builtin {
+        name: String,
+        n_args: Option<usize>,
+        func: BuiltinFunctionClosure,
+    },
+    UserDefined {
+        name: Option<String>,
+        arg_names: Vec<String>,
+        body: Ast,
+    },
+}
+
+impl Debug for FunctionKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Function::Builtin { n_args, .. } => *n_args,
-            Function::UserDefined { arg_names, .. } => Some(arg_names.len()),
+            FunctionKind::Builtin { name, .. } => {
+                write!(f, "built-in function '{}'", name)
+            }
+            FunctionKind::UserDefined { name, .. } => {
+                if let Some(name) = name {
+                    write!(f, "function '{}'", name)
+                } else {
+                    write!(f, "unnamed function")
+                }
+            }
         }
     }
 }
@@ -1112,7 +1246,7 @@ impl Context {
     {
         self.set_var(
             name.clone(),
-            Value::Function(Rc::new(Function::new_builtin(name, None, n_args, func))),
+            Value::Function(Function::new_builtin(name, None, n_args, func)),
         )
     }
 
@@ -1141,12 +1275,12 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
         } => {
             let func =
                 Function::new_user_defined(Some(name.as_str()), arg_names.clone(), *body.clone())?;
-            ctx.set_var(name, Value::Function(Rc::new(func)));
+            ctx.set_var(name, Value::Function(func));
             NULL_VALUE
         }
         Ast::UnnamedFunction { arg_names, body } => {
             let func = Function::new_user_defined(None, arg_names.clone(), *body.clone())?;
-            Value::Function(Rc::new(func))
+            Value::Function(func)
         }
         Ast::MemberAccess {
             value: value_ast,
@@ -1179,6 +1313,14 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
                 .map(|ast| evaluate(ast, ctx))
                 .collect::<Result<_, _>>()?;
             Value::List(Rc::new(RefCell::new(values)))
+        }
+        Ast::ObjectLiteral(key_value_pairs) => {
+            let mut object = HashMap::new();
+            for (key, value) in key_value_pairs {
+                let value = evaluate(value, ctx)?;
+                object.insert(key.clone(), value);
+            }
+            Value::Object(Rc::new(RefCell::new(object)))
         }
         Ast::Variable(name) => ctx
             .get_var(name)
@@ -1214,6 +1356,12 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
             let index = evaluate(index, ctx)?;
             let rval = evaluate(rhs, ctx)?;
             value.set_index(index, rval.clone())?;
+            NULL_VALUE
+        }
+        Ast::MemberAssign { value, member, rhs } => {
+            let value = evaluate(value, ctx)?;
+            let rval = evaluate(rhs, ctx)?;
+            value.set_member(member, rval.clone())?;
             NULL_VALUE
         }
         Ast::FunctionCall { value, args } => {

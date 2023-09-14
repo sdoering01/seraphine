@@ -74,6 +74,8 @@ pub enum TokenKind {
     Equal,
     /// '.'
     Dot,
+    /// ':'
+    Colon,
     Newline,
     /// End of file
     Eof,
@@ -221,6 +223,7 @@ impl<'a> Tokenizer<'a> {
                     TokenKind::Number(n)
                 }
                 ('.', _) => TokenKind::Dot,
+                (':', _) => TokenKind::Colon,
                 ('"', _) => {
                     let mut str = String::new();
                     let mut terminated = false;
