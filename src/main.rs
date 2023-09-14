@@ -1846,4 +1846,35 @@ mod tests {
         ";
         assert_eq_num!(eval_str(code).unwrap(), 2.0);
     }
+
+    #[test]
+    fn test_newline_in_indexing() {
+        let code = "\
+            l = [1, 2]
+            l[
+                0
+            ]
+            =
+            3
+            l[
+                0
+            ]
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 3.0);
+
+        let code = "\
+            l = [1, 2]
+            l
+            [
+                0
+            ]
+            =
+            3
+            l
+            [
+                0
+            ]
+        ";
+        assert!(eval_str(code).is_err());
+    }
 }

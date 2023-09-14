@@ -465,7 +465,9 @@ impl<'a> Parser<'a> {
     fn parse_indexing(&mut self, value: Ast) -> Result<Ast, ParseError> {
         // <value>[<index>]
         self.expect(TokenKind::LBracket)?;
+        self.skip_newlines();
         let index = self.parse_expression()?;
+        self.skip_newlines();
         self.expect(TokenKind::RBracket)?;
         Ok(Ast::Indexing {
             value: Box::new(value),
