@@ -223,15 +223,19 @@ impl<'a> Parser<'a> {
     fn parse_expression_or_assignment(&mut self) -> Result<Ast, ParseError> {
         let is_potential_assignment = matches!(self.peek_kind(), Some(TokenKind::Identifier(_)));
         let lhs = self.parse_expression()?;
-        if is_potential_assignment && self.peek_kind() == Some(&TokenKind::Equal) {
+        if is_potential_assignment && self.peek_next_non_newline_kind() == Some(&TokenKind::Equal) {
             match lhs {
                 Ast::Variable(var) => {
+                    self.skip_newlines();
                     self.next();
+                    self.skip_newlines();
                     let rhs = self.parse_expression()?;
                     return Ok(Ast::Assign(var, Box::new(rhs)));
                 }
                 Ast::Indexing { value, index } => {
+                    self.skip_newlines();
                     self.next();
+                    self.skip_newlines();
                     let rhs = self.parse_expression()?;
                     return Ok(Ast::IndexingAssign {
                         value,
@@ -240,7 +244,9 @@ impl<'a> Parser<'a> {
                     });
                 }
                 Ast::MemberAccess { value, member } => {
+                    self.skip_newlines();
                     self.next();
+                    self.skip_newlines();
                     let rhs = self.parse_expression()?;
                     return Ok(Ast::MemberAssign {
                         value,
@@ -686,6 +692,13 @@ impl<'a> Parser<'a> {
     /// token.
     fn peek_next_non_newline(&self) -> Option<&Token> {
         self.peek_next_non_newline_from_offset(1)
+    }
+
+    /// Peeks the kind of the next token that isn't a newline.
+    ///
+    /// See [`Self::peek_next_non_newline`].
+    fn peek_next_non_newline_kind(&self) -> Option<&TokenKind> {
+        self.peek_next_non_newline_from_offset(1).map(|t| &t.kind)
     }
 
     /// Peeks the next token that isn't a newline from one-based offset of `offset`.

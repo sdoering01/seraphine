@@ -434,7 +434,6 @@ mod tests {
         assert!(eval_str("1 + \n 2").is_err());
         assert!(eval_str("sin(pi\n/2)").is_err());
         assert!(eval_str("1 * (2 + \n 3)").is_err());
-        assert!(eval_str("a = \n2").is_err());
     }
 
     #[test]
@@ -1792,5 +1791,34 @@ mod tests {
             ]
         ";
         assert_eq_num_list!(eval_str(code).unwrap(), [1.0, 2.0]);
+    }
+
+    #[test]
+    fn test_newline_in_assignment() {
+        let code = "\
+            a
+            =
+            1
+            a
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
+
+        let code = "\
+            o = {}
+            o.a
+            =
+            1
+            o.a
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
+
+        let code = "\
+            l = [0]
+            l[0]
+            =
+            1
+            l[0]
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
     }
 }
