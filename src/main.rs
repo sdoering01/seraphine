@@ -1,4 +1,4 @@
-use std::process;
+use std::{io::Write, process};
 
 mod common;
 mod error;
@@ -7,10 +7,10 @@ mod io;
 mod parser;
 mod tokenizer;
 
-use error::CalcError;
+use error::{CalcError, ParseError};
 use eval::{evaluate, Context, Value};
 use parser::parse;
-use tokenizer::tokenize;
+use tokenizer::{tokenize, Token, TokenKind};
 
 fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<Value, CalcError> {
     let tokens = tokenize(s)?;
@@ -43,31 +43,39 @@ fn eval_file(path: &str) -> Result<(), CalcError> {
 }
 
 fn repl() {
-    // TODO: Implement proper multi-line support
     let mut ctx = Context::new();
-    let _stdout = std::io::stdout();
+    let stdout = std::io::stdout();
     let mut input = String::new();
 
     loop {
         let mut line = String::new();
         match std::io::stdin().read_line(&mut line) {
             Ok(_) => {
-                let line = line.trim();
-                if line.is_empty() {
+                if line.trim().is_empty() {
                     continue;
                 }
-                input.push_str(line);
+                input.push_str(&line);
                 match eval_str_ctx(&input, &mut ctx) {
                     Ok(result) => {
                         println!("{}", result);
                         input.clear();
                     }
-                    // Artifact from previous band aid multi-line support
-                    // input incomplete => {
-                    //     input.push('\n');
-                    //     print!("> ");
-                    //     stdout.lock().flush().expect("Failed to flush stdout");
-                    // }
+                    Err(CalcError::ParseError(
+                        ParseError::NoTokensLeft
+                        | ParseError::UnexpectedToken {
+                            token:
+                                Token {
+                                    kind: TokenKind::Eof,
+                                    ..
+                                },
+                            ..
+                        },
+                    )) => {
+                        // TODO: Add ability to clear input with Ctrl+C
+                        input.push('\n');
+                        print!("> ");
+                        stdout.lock().flush().expect("Failed to flush stdout");
+                    }
                     Err(err) => {
                         eprintln!("{}", err.format(&input, "<repl>"));
                         input.clear();
