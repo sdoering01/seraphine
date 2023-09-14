@@ -189,7 +189,13 @@ impl<'a> Parser<'a> {
                     });
                 }
                 TokenKind::Keyword(Keyword::Fn)
-                    if matches!(self.peek_nth_kind(2), Some(TokenKind::Identifier(_))) =>
+                    if matches!(
+                        self.peek_next_non_newline_from_offset(2),
+                        Some(Token {
+                            kind: TokenKind::Identifier(_),
+                            ..
+                        })
+                    ) =>
                 {
                     (Some(self.parse_function_definition(true)?), true)
                 }
@@ -479,9 +485,7 @@ impl<'a> Parser<'a> {
                 Some(Token {
                     kind: TokenKind::LParen,
                     ..
-                }) => {
-                    self.parse_function_definition_without_fn(false)?
-                },
+                }) => self.parse_function_definition_without_fn(false)?,
                 Some(Token {
                     kind: TokenKind::Comma | TokenKind::RBrace,
                     ..
@@ -532,30 +536,34 @@ impl<'a> Parser<'a> {
     fn parse_function_definition(&mut self, named: bool) -> Result<Ast, ParseError> {
         // fn <function_definition_without_fn>
         self.expect(TokenKind::Keyword(Keyword::Fn))?;
+        self.skip_newlines();
         self.parse_function_definition_without_fn(named)
     }
 
     fn parse_function_definition_without_fn(&mut self, named: bool) -> Result<Ast, ParseError> {
         // [ <name> ] (<arg1>, <arg2>, ...) { <body> }
         let fn_name = if named {
-            Some(self.expect_identifier()?.to_string())
+            let ident = self.expect_identifier()?.to_string();
+            self.skip_newlines();
+            Some(ident)
         } else {
             None
         };
         self.expect(TokenKind::LParen)?;
+        self.skip_newlines();
 
         let mut arg_names = Vec::new();
         while let Some(TokenKind::Identifier(arg_name)) = self.peek_kind() {
             arg_names.push(arg_name.to_string());
             self.next();
+            self.skip_newlines();
 
-            match self.peek_kind() {
-                // TODO: Remove guard when trailing commas are allowed
-                Some(TokenKind::Comma) if self.peek_nth_kind(2) != Some(&TokenKind::RParen) => {
-                    self.next();
-                }
-                _ => break,
+            if self.peek_kind() != Some(&TokenKind::Comma) {
+                break;
             }
+
+            self.next();
+            self.skip_newlines();
         }
 
         self.expect(TokenKind::RParen)?;
@@ -679,7 +687,14 @@ impl<'a> Parser<'a> {
     /// [`Self::skip_newlines`] and [`Self::next`] can be used to advance the position to the next non-newline
     /// token.
     fn peek_next_non_newline(&self) -> Option<&Token> {
-        let mut peek_idx = 1;
+        self.peek_next_non_newline_from_offset(1)
+    }
+
+    /// Peeks the next token that isn't a newline from one-based offset of `offset`.
+    ///
+    /// `offset` must be greater than or equal to 1.
+    fn peek_next_non_newline_from_offset(&self, offset: usize) -> Option<&Token> {
+        let mut peek_idx = offset.max(1);
         while let Some(TokenKind::Newline) = self.peek_nth_kind(peek_idx) {
             peek_idx += 1;
         }

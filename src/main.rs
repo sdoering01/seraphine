@@ -1475,6 +1475,20 @@ mod tests {
             }
         ";
         assert!(eval_str(code).is_err());
+
+        let code = "\
+            o = {
+                a
+                    (
+
+                    )
+                    {
+                        1
+                    }
+            }
+            o.a()
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
     }
 
     #[test]
@@ -1720,5 +1734,23 @@ mod tests {
     fn test_null() {
         assert_null!(eval_str("null").unwrap());
         assert_eq_bool!(eval_str("null == null").unwrap(), true);
+    }
+
+    #[test]
+    fn test_multiline_function_definition() {
+        let code = "\
+            fn
+                add
+                (
+                a
+                ,
+                b,
+            )
+                {
+                a + b
+            }
+            add(1, 2)
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 3.0);
     }
 }
