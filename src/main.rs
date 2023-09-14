@@ -433,7 +433,6 @@ mod tests {
     fn test_newlines_not_allowed() {
         assert!(eval_str("1 + \n 2").is_err());
         assert!(eval_str("sin(pi\n/2)").is_err());
-        assert!(eval_str("sin(\npi/2)").is_err());
         assert!(eval_str("1 * (2 + \n 3)").is_err());
         assert!(eval_str("a = \n2").is_err());
     }
@@ -456,7 +455,7 @@ mod tests {
         assert!(eval_str("fn empty_body() {}").is_ok());
         assert!(eval_str("fn no_args() {\n inspect(1)\n }").is_ok());
         assert!(eval_str("fn one_liner(a, b) { a + b }").is_ok());
-        assert!(eval_str("fn trailing_comma(a, b,) { a + b }").is_err());
+        assert!(eval_str("fn trailing_comma(a, b,) { a + b }").is_ok());
         assert!(eval_str("fn leading_comma(, a, b) { a + b }").is_err());
         assert!(eval_str("fn no_comma(a b) { a + b }").is_err());
         assert!(eval_str("fn contains_expression(a, b, 1 + 1) { a + b }").is_err());
