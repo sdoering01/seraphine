@@ -50,7 +50,11 @@ fn repl() {
     loop {
         let mut line = String::new();
         match std::io::stdin().read_line(&mut line) {
-            Ok(_) => {
+            Ok(n_read) => {
+                if n_read == 0 {
+                    break;
+                }
+
                 if input.is_empty() && line.trim().is_empty() {
                     continue;
                 }
