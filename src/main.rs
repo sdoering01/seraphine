@@ -51,7 +51,7 @@ fn repl() {
         let mut line = String::new();
         match std::io::stdin().read_line(&mut line) {
             Ok(_) => {
-                if line.trim().is_empty() {
+                if input.is_empty() && line.trim().is_empty() {
                     continue;
                 }
                 input.push_str(&line);
