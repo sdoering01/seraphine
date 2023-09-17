@@ -1,27 +1,28 @@
-use std::{io::Write, process};
+use std::process;
 
 mod common;
 mod error;
 mod eval;
 mod io;
 mod parser;
+mod repl;
 mod tokenizer;
 
-use error::{CalcError, ParseError};
+use error::CalcError;
 use eval::{evaluate, Context, Value};
 use parser::parse;
-use tokenizer::{tokenize, Token, TokenKind};
+use tokenizer::tokenize;
 
 fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<Value, CalcError> {
     let tokens = tokenize(s)?;
-    if cfg!(debug_assertions) {
-        println!("Tokens: {:?}", tokens);
-    }
+    // if cfg!(debug_assertions) {
+    //     println!("Tokens: {:?}", tokens);
+    // }
 
     let ast = parse(&tokens)?;
-    if cfg!(debug_assertions) {
-        println!("AST: {:#?}", ast);
-    }
+    // if cfg!(debug_assertions) {
+    //     println!("AST: {:#?}", ast);
+    // }
 
     let result = evaluate(&ast, ctx)?;
     Ok(result)
@@ -42,63 +43,15 @@ fn eval_file(path: &str) -> Result<(), CalcError> {
     }
 }
 
-fn repl() {
-    let mut ctx = Context::new();
-    let stdout = std::io::stdout();
-    let mut input = String::new();
-
-    loop {
-        let mut line = String::new();
-        match std::io::stdin().read_line(&mut line) {
-            Ok(n_read) => {
-                if n_read == 0 {
-                    break;
-                }
-
-                if input.is_empty() && line.trim().is_empty() {
-                    continue;
-                }
-                input.push_str(&line);
-                match eval_str_ctx(&input, &mut ctx) {
-                    Ok(result) => {
-                        println!("{}", result);
-                        input.clear();
-                    }
-                    Err(CalcError::ParseError(
-                        ParseError::NoTokensLeft
-                        | ParseError::UnexpectedToken {
-                            token:
-                                Token {
-                                    kind: TokenKind::Eof,
-                                    ..
-                                },
-                            ..
-                        },
-                    )) => {
-                        // TODO: Add ability to clear input with Ctrl+C
-                        input.push('\n');
-                        print!("> ");
-                        stdout.lock().flush().expect("Failed to flush stdout");
-                    }
-                    Err(err) => {
-                        eprintln!("{}", err.format(&input, "<repl>"));
-                        input.clear();
-                    }
-                }
-            }
-            Err(err) => eprintln!("Error: {}", err),
-        }
-    }
-}
-
-fn main() {
+fn main() -> std::io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 {
         if eval_file(&args[1]).is_err() {
             process::exit(1);
         }
+        Ok(())
     } else {
-        repl();
+        repl::repl()
     }
 }
 
