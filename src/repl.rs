@@ -11,7 +11,7 @@ use termion::{
     cursor::DetectCursorPos,
     event::{Event, Key},
     input::TermRead,
-    raw::IntoRawMode,
+    raw::{IntoRawMode, RawTerminal},
 };
 
 use crate::{
@@ -111,8 +111,12 @@ impl History {
     }
 }
 
+// Prevent accidental direct writes to stdout
+struct WrappedStdout(RawTerminal<std::io::Stdout>);
+
 struct Repl {
     ctx: Context,
+    stdout: WrappedStdout,
     input: String,
     line: String,
     pos_in_line: usize,
@@ -120,19 +124,23 @@ struct Repl {
     history: History,
     history_index: usize,
     prev_cursor_y_in_input: usize,
-    prev_input_lines: u16,
+    prev_prompt_lines: u16,
     should_exit: bool,
+    wrote_since_last_prompt: bool,
 }
 
 impl Repl {
-    fn new() -> Repl {
-        let context = Context::builder()
+    fn new() -> std::io::Result<Repl> {
+        let ctx = Context::builder()
             .stdout(ReplWriter::new())
             .stderr(ReplWriter::new())
             .build();
 
-        Repl {
-            ctx: context,
+        let stdout = WrappedStdout(std::io::stdout().into_raw_mode()?);
+
+        Ok(Repl {
+            ctx,
+            stdout,
             input: String::new(),
             line: String::new(),
             pos_in_line: 0,
@@ -140,14 +148,13 @@ impl Repl {
             history: History::new(1000),
             history_index: 0,
             prev_cursor_y_in_input: 0,
-            prev_input_lines: 1,
+            prev_prompt_lines: 1,
             should_exit: false,
-        }
+            wrote_since_last_prompt: false,
+        })
     }
 
     fn handle_event(&mut self, ev: Event) -> std::io::Result<()> {
-        let mut stdout = std::io::stdout();
-
         if let Event::Key(key) = ev {
             if !matches!(key, Key::Ctrl('c')) {
                 self.ctrl_c_pressed = false;
@@ -165,25 +172,18 @@ impl Repl {
                             self.should_exit = true;
                         } else {
                             self.ctrl_c_pressed = true;
-                            write_displayable(&mut stdout, "\npress ctrl+c again to exit")?;
+                            self.write_displayable("\npress ctrl+c again to exit")?;
                         }
                     } else {
                         self.input.clear();
                         self.line.clear();
                         self.pos_in_line = 0;
-                        write_newline(&mut stdout)?;
+                        self.write_newline()?;
                     }
                 }
-                Key::Ctrl('l') => {
-                    write!(
-                        stdout,
-                        "{}{}",
-                        termion::clear::All,
-                        termion::cursor::Goto(1, 1)
-                    )?;
-                }
+                Key::Ctrl('l') => self.clear()?,
                 Key::Char('\n') => {
-                    write_newline(&mut stdout)?;
+                    self.write_newline()?;
 
                     let is_line_empty = self.line.trim().is_empty();
 
@@ -202,12 +202,12 @@ impl Repl {
 
                     match eval_str_ctx(&self.input, &mut self.ctx) {
                         Ok(result) => {
-                            let (cursor_x, _) = stdout.cursor_pos()?;
+                            let (cursor_x, _) = self.stdout.0.cursor_pos()?;
                             if cursor_x > 1 {
-                                write_newline(&mut stdout)?;
+                                self.write_newline()?;
                             }
 
-                            write_displayable(&mut stdout, result)?;
+                            self.write_displayable(result)?;
                             self.input.clear();
                         }
                         Err(CalcError::ParseError(
@@ -225,7 +225,7 @@ impl Repl {
                         }
                         Err(err) => {
                             let formatted_err = err.format(&self.input, "<repl>");
-                            write_displayable(&mut stdout, formatted_err)?;
+                            self.write_displayable(formatted_err)?;
                             self.input.clear();
                         }
                     };
@@ -327,8 +327,6 @@ impl Repl {
     }
 
     fn write_prompt(&mut self) -> std::io::Result<()> {
-        let mut stdout = std::io::stdout();
-
         let current_prefix = if !self.input.is_empty() {
             INPUT_INCOMPLETE_PREFIX
         } else {
@@ -345,24 +343,28 @@ impl Repl {
 
         let cursor_y_in_input = (current_prefix.len() + self.pos_in_line) / term_width as usize;
         // Round up
-        let input_lines =
+        let prompt_lines =
             ((prompt_length + term_width.saturating_sub(1) as usize) / term_width as usize) as u16;
 
-        if input_lines > self.prev_input_lines {
+        if prompt_lines > self.prev_prompt_lines {
             // Make space for another line, but leave cursor in the same y position
-            write!(stdout, "\n{}", termion::cursor::Up(1))?;
+            write!(self.stdout.0, "\n{}", termion::cursor::Up(1))?;
         }
 
-        let (_, current_cursor_y) = stdout.cursor_pos()?;
-        let prompt_start_y = current_cursor_y.saturating_sub(self.prev_cursor_y_in_input as u16);
+        let (_, current_cursor_y) = self.stdout.0.cursor_pos()?;
+        let prompt_start_y = if self.wrote_since_last_prompt {
+            current_cursor_y
+        } else {
+            current_cursor_y.saturating_sub(self.prev_cursor_y_in_input as u16)
+        };
         let cursor_x = ((current_prefix.len() + self.pos_in_line) % term_width as usize) as u16 + 1;
         let cursor_y = (prompt_start_y as usize + cursor_y_in_input) as u16;
 
-        self.prev_input_lines = input_lines;
+        self.prev_prompt_lines = prompt_lines;
         self.prev_cursor_y_in_input = cursor_y_in_input;
 
         write!(
-            stdout,
+            self.stdout.0,
             "{}{}{}{}{}",
             termion::cursor::Goto(1, prompt_start_y),
             termion::clear::AfterCursor,
@@ -370,7 +372,10 @@ impl Repl {
             self.line,
             termion::cursor::Goto(cursor_x, cursor_y)
         )?;
-        stdout.flush()?;
+        self.flush()?;
+
+        self.wrote_since_last_prompt = false;
+
         Ok(())
     }
 
@@ -378,13 +383,9 @@ impl Repl {
         debug!("Starting repl\n");
 
         let stdin = std::io::stdin();
-        let mut stdout = std::io::stdout().into_raw_mode()?;
 
-        write!(stdout, "{}", PREFIX)?;
-        stdout.flush()?;
+        self.write_prompt()?;
 
-        // TODO: Handle case where something it output by the program and the cursor is not at the
-        // end of the line
         for ev in stdin.events() {
             self.handle_event(ev?)?;
 
@@ -396,6 +397,44 @@ impl Repl {
         }
 
         Ok(())
+    }
+
+    fn prepare_non_prompt_writing(&mut self) -> std::io::Result<()> {
+        if !self.wrote_since_last_prompt {
+            self.wrote_since_last_prompt = true;
+
+            // Move to last line of prompt, so the output appears after it
+            let move_down_by = self.prev_prompt_lines - 1 - self.prev_cursor_y_in_input as u16;
+            // Moving down always moves down by at least 1, 0 is not possible
+            if move_down_by > 0 {
+                write!(self.stdout.0, "{}", termion::cursor::Down(move_down_by))?;
+            }
+        }
+        Ok(())
+    }
+
+    fn write_displayable(&mut self, d: impl Display) -> std::io::Result<()> {
+        self.prepare_non_prompt_writing()?;
+        write_displayable(&mut self.stdout.0, d)
+    }
+
+    fn write_newline(&mut self) -> std::io::Result<()> {
+        self.prepare_non_prompt_writing()?;
+        write_newline(&mut self.stdout.0)
+    }
+
+    fn clear(&mut self) -> std::io::Result<()> {
+        self.wrote_since_last_prompt = true;
+        write!(
+            self.stdout.0,
+            "{}{}",
+            termion::clear::All,
+            termion::cursor::Goto(1, 1)
+        )
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.stdout.0.flush()
     }
 }
 
@@ -414,5 +453,5 @@ fn write_newline(mut stdout: impl Write) -> std::io::Result<()> {
 }
 
 pub fn repl() -> std::io::Result<()> {
-    Repl::new().start()
+    Repl::new()?.start()
 }
