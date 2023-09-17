@@ -965,6 +965,7 @@ pub struct Context {
     stdin: BufReader<Box<dyn Read>>,
     stdout: Box<dyn Write>,
     stderr: Box<dyn Write>,
+    #[allow(dead_code)]
     debug_writer: Option<Box<dyn Write>>,
     /// This flag is used during tests until observable side effects apart from writing to stdout
     /// are introduced.

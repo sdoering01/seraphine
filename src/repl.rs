@@ -21,10 +21,8 @@ use crate::{
     CalcError,
 };
 
-#[cfg(debug_assertions)]
 static mut DEBUG_FILE: OnceCell<File> = OnceCell::new();
 
-#[cfg(debug_assertions)]
 macro_rules! debug {
     ($($arg:tt)*) => {
         if cfg!(debug_assertions) {
