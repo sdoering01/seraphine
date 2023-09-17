@@ -236,8 +236,14 @@ impl Repl {
                         return Ok(());
                     }
 
-                    self.line.insert(self.pos_in_line, c);
-                    self.pos_in_line += 1;
+                    if c == '\t' {
+                        let ident = "    ";
+                        self.line.insert_str(self.pos_in_line, ident);
+                        self.pos_in_line += ident.len();
+                    } else {
+                        self.line.insert(self.pos_in_line, c);
+                        self.pos_in_line += 1;
+                    }
                 }
                 Key::Left => {
                     self.pos_in_line = self.pos_in_line.saturating_sub(1);
