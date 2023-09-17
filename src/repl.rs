@@ -280,18 +280,18 @@ impl Repl {
                         let mut idx = self.pos_in_line - 1;
 
                         // Drain whitespaces
-                        while self.line.as_bytes()[idx] == b' ' && idx > 0 {
+                        while idx > 0 && self.line.as_bytes()[idx] == b' ' {
                             idx -= 1;
                         }
 
                         // Drain word
-                        while self.line.as_bytes()[idx] != b' ' && idx > 0 {
-                            idx -= 1;
-                        }
-
-                        // TODO: This is not correct, fix it
                         if idx > 0 {
-                            idx += 1;
+                            // We have to make sure that the index points to the first character of
+                            // the word, not the character before it
+                            idx -= 1;
+                            while idx > 0 && self.line.as_bytes()[idx - 1] != b' ' {
+                                idx -= 1;
+                            }
                         }
 
                         self.line.drain(idx..self.pos_in_line);
