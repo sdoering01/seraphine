@@ -17,7 +17,6 @@ use termion::{
 use crate::{
     error::ParseError,
     eval::Context,
-    eval_str_ctx,
     tokenizer::{Token, TokenKind},
     CalcError,
 };
@@ -134,6 +133,7 @@ impl Repl {
         let ctx = Context::builder()
             .stdout(ReplWriter::new())
             .stderr(ReplWriter::new())
+            .debug_writer(Some(ReplWriter::new()))
             .build();
 
         let stdout = WrappedStdout(std::io::stdout().into_raw_mode()?);
@@ -200,7 +200,7 @@ impl Repl {
                         return Ok(());
                     }
 
-                    match eval_str_ctx(&self.input, &mut self.ctx) {
+                    match self.ctx.eval_str(&self.input) {
                         Ok(result) => {
                             let (cursor_x, _) = self.stdout.0.cursor_pos()?;
                             if cursor_x > 1 {

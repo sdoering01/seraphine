@@ -6,7 +6,11 @@ use std::{
     rc::Rc,
 };
 
-use crate::{error::EvalError, parser::Ast};
+use crate::{
+    error::{CalcError, EvalError},
+    parser::{parse, Ast},
+    tokenizer::tokenize,
+};
 
 // TODO: Find out how to increase this limit, since the stack of the main thread can overflow if
 // this is too large.
@@ -867,6 +871,7 @@ pub struct ContextBuilder {
     stdin: Box<dyn Read>,
     stdout: Box<dyn Write>,
     stderr: Box<dyn Write>,
+    debug_writer: Option<Box<dyn Write>>,
     standard_variables: bool,
     standard_functions: bool,
 }
@@ -877,6 +882,7 @@ impl Default for ContextBuilder {
             stdin: Box::new(stdin()),
             stdout: Box::new(stdout()),
             stderr: Box::new(stderr()),
+            debug_writer: Some(Box::new(stdout())),
             standard_variables: true,
             standard_functions: true,
         }
@@ -892,6 +898,7 @@ impl ContextBuilder {
             stdin: BufReader::new(self.stdin),
             stdout: self.stdout,
             stderr: self.stderr,
+            debug_writer: self.debug_writer,
             _internal_side_effect_flag: false,
         };
 
@@ -927,6 +934,15 @@ impl ContextBuilder {
         self
     }
 
+    pub fn debug_writer(mut self, debug_writer: Option<impl Write + 'static>) -> Self {
+        if let Some(debug_writer) = debug_writer {
+            self.debug_writer = Some(Box::new(debug_writer));
+        } else {
+            self.debug_writer = None;
+        }
+        self
+    }
+
     // TODO: Remove `#[allow(unused)]` once this is used outside of tests
     #[allow(unused)]
     pub fn standard_variables(mut self, b: bool) -> Self {
@@ -949,6 +965,7 @@ pub struct Context {
     stdin: BufReader<Box<dyn Read>>,
     stdout: Box<dyn Write>,
     stderr: Box<dyn Write>,
+    debug_writer: Option<Box<dyn Write>>,
     /// This flag is used during tests until observable side effects apart from writing to stdout
     /// are introduced.
     // TODO: Remove this when some form of obvservable side effects is implemented
@@ -968,6 +985,25 @@ impl Context {
 
     pub fn builder() -> ContextBuilder {
         ContextBuilder::default()
+    }
+
+    pub fn eval_str(&mut self, s: &str) -> Result<Value, CalcError> {
+        let tokens = tokenize(s)?;
+
+        #[cfg(debug_assertions)]
+        if let Some(debug_writer) = &mut self.debug_writer {
+            writeln!(debug_writer, "Tokens: {:?}", tokens)?;
+        }
+
+        let ast = parse(&tokens)?;
+
+        #[cfg(debug_assertions)]
+        if let Some(debug_writer) = &mut self.debug_writer {
+            writeln!(debug_writer, "AST: {:#?}", ast)?;
+        }
+
+        let result = evaluate(&ast, self)?;
+        Ok(result)
     }
 
     fn add_standard_variables(&mut self) {
