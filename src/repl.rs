@@ -116,7 +116,6 @@ struct Repl {
     input: String,
     line: String,
     pos_in_line: usize,
-    input_incomplete: bool,
     ctrl_c_pressed: bool,
     history: History,
     history_index: usize,
@@ -137,7 +136,6 @@ impl Repl {
             input: String::new(),
             line: String::new(),
             pos_in_line: 0,
-            input_incomplete: false,
             ctrl_c_pressed: false,
             history: History::new(1000),
             history_index: 0,
@@ -173,7 +171,6 @@ impl Repl {
                         self.input.clear();
                         self.line.clear();
                         self.pos_in_line = 0;
-                        self.input_incomplete = false;
                         write_newline(&mut stdout)?;
                     }
                 }
@@ -211,7 +208,6 @@ impl Repl {
                             }
 
                             write_displayable(&mut stdout, result)?;
-                            self.input_incomplete = false;
                             self.input.clear();
                         }
                         Err(CalcError::ParseError(
@@ -225,13 +221,11 @@ impl Repl {
                                 ..
                             },
                         )) => {
-                            self.input_incomplete = true;
                             self.input.push('\n');
                         }
                         Err(err) => {
                             let formatted_err = err.format(&self.input, "<repl>");
                             write_displayable(&mut stdout, formatted_err)?;
-                            self.input_incomplete = false;
                             self.input.clear();
                         }
                     };
@@ -329,7 +323,7 @@ impl Repl {
     fn write_prompt(&mut self) -> std::io::Result<()> {
         let mut stdout = std::io::stdout();
 
-        let current_prefix = if self.input_incomplete {
+        let current_prefix = if !self.input.is_empty() {
             INPUT_INCOMPLETE_PREFIX
         } else {
             PREFIX
