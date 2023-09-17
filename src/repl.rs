@@ -348,7 +348,11 @@ impl Repl {
 
         if prompt_lines > self.prev_prompt_lines {
             // Make space for another line, but leave cursor in the same y position
-            write!(self.stdout.0, "\n{}", termion::cursor::Up(1))?;
+            let line_diff = self.lines_to_last_prompt_line();
+            if line_diff > 0 {
+                write!(self.stdout.0, "{}", termion::cursor::Down(line_diff))?;
+            }
+            write!(self.stdout.0, "\n{}", termion::cursor::Up(1 + line_diff))?;
         }
 
         let (_, current_cursor_y) = self.stdout.0.cursor_pos()?;
@@ -399,12 +403,16 @@ impl Repl {
         Ok(())
     }
 
+    fn lines_to_last_prompt_line(&self) -> u16 {
+        self.prev_prompt_lines - 1 - self.prev_cursor_y_in_input as u16
+    }
+
     fn prepare_non_prompt_writing(&mut self) -> std::io::Result<()> {
         if !self.wrote_since_last_prompt {
             self.wrote_since_last_prompt = true;
 
             // Move to last line of prompt, so the output appears after it
-            let move_down_by = self.prev_prompt_lines - 1 - self.prev_cursor_y_in_input as u16;
+            let move_down_by = self.lines_to_last_prompt_line();
             // Moving down always moves down by at least 1, 0 is not possible
             if move_down_by > 0 {
                 write!(self.stdout.0, "{}", termion::cursor::Down(move_down_by))?;
