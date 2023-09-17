@@ -9,29 +9,12 @@ mod repl;
 mod tokenizer;
 
 use error::CalcError;
-use eval::{evaluate, Context, Value};
-use parser::parse;
-use tokenizer::tokenize;
-
-fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<Value, CalcError> {
-    let tokens = tokenize(s)?;
-    // if cfg!(debug_assertions) {
-    //     println!("Tokens: {:?}", tokens);
-    // }
-
-    let ast = parse(&tokens)?;
-    // if cfg!(debug_assertions) {
-    //     println!("AST: {:#?}", ast);
-    // }
-
-    let result = evaluate(&ast, ctx)?;
-    Ok(result)
-}
+use eval::Context;
 
 fn eval_file(path: &str) -> Result<(), CalcError> {
     let mut ctx = Context::new();
     let contents = std::fs::read_to_string(path)?;
-    match eval_str_ctx(&contents, &mut ctx) {
+    match ctx.eval_str(&contents) {
         Ok(result) => {
             println!("{}", result);
             Ok(())
@@ -63,7 +46,11 @@ mod tests {
     use eval::Value;
 
     fn eval_str(s: &str) -> Result<Value, CalcError> {
-        eval_str_ctx(s, &mut Context::new())
+        Context::new().eval_str(s)
+    }
+
+    fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<Value, CalcError> {
+        ctx.eval_str(s)
     }
 
     macro_rules! assert_null {

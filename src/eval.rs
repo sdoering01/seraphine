@@ -991,15 +991,23 @@ impl Context {
         let tokens = tokenize(s)?;
 
         #[cfg(debug_assertions)]
-        if let Some(debug_writer) = &mut self.debug_writer {
-            writeln!(debug_writer, "Tokens: {:?}", tokens)?;
+        if !cfg!(test) {
+            if let Some(debug_writer) = &mut self.debug_writer {
+                writeln!(debug_writer, "Tokens: {:?}", tokens)?;
+            }
+        } else {
+            println!("Tokens: {:?}", tokens);
         }
 
         let ast = parse(&tokens)?;
 
         #[cfg(debug_assertions)]
-        if let Some(debug_writer) = &mut self.debug_writer {
-            writeln!(debug_writer, "AST: {:#?}", ast)?;
+        if !cfg!(test) {
+            if let Some(debug_writer) = &mut self.debug_writer {
+                writeln!(debug_writer, "AST: {:#?}", ast)?;
+            }
+        } else {
+            println!("AST: {:#?}", ast);
         }
 
         let result = evaluate(&ast, self)?;
