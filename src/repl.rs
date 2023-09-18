@@ -41,6 +41,21 @@ macro_rules! debug {
 const PREFIX: &str = "> ";
 const INPUT_INCOMPLETE_PREFIX: &str = "| ";
 
+const WELCOME_MESSAGE: &str = "\
+Welcome to Seraphine!
+Type \".help\" for help.
+";
+
+const HELP_MESSAGE: &str = "\
+Left/Right: move cursor
+Up/Down: move through history
+Ctrl+W: delete word before cursor
+Ctrl+U: delete before cursor
+Ctrl+L: clear screen
+Ctrl+C: clear current input
+Ctrl+D: exit (if input is empty)
+";
+
 #[derive(Debug)]
 struct ReplWriter {
     stdout: std::io::Stdout,
@@ -195,6 +210,12 @@ impl Repl {
                     self.pos_in_line = 0;
 
                     if self.input.is_empty() && is_line_empty {
+                        return Ok(());
+                    }
+
+                    if self.input == ".help" {
+                        self.write_displayable(HELP_MESSAGE)?;
+                        self.input.clear();
                         return Ok(());
                     }
 
@@ -386,6 +407,7 @@ impl Repl {
 
         let stdin = std::io::stdin();
 
+        self.write_displayable(WELCOME_MESSAGE)?;
         self.write_prompt()?;
 
         for ev in stdin.events() {
