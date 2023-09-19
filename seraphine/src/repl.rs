@@ -468,13 +468,9 @@ impl Repl {
 
     fn write_error(&mut self, e: impl Display) -> std::io::Result<()> {
         self.prepare_non_prompt_writing()?;
-        write!(self.stdout.0, "{}", termion::color::Fg(termion::color::Red))?;
+        write!(self.stdout.0, "{}", color::Fg(color::Red))?;
         self.write_displayable(e)?;
-        write!(
-            self.stdout.0,
-            "{}",
-            termion::color::Fg(termion::color::Reset)
-        )
+        write!(self.stdout.0, "{}", color::Fg(color::Reset))
     }
 
     fn write_newline(&mut self) -> std::io::Result<()> {
