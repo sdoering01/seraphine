@@ -304,10 +304,12 @@ impl<'a> Parser<'a> {
     /// Calling the function with the input `1 + 2 ^ 3 * 4` and a `min_precedence` of `0` would
     /// result in the following AST:
     ///
+    /// ```notest
     ///              +
     ///            1         *
     ///                  ^     4
     ///                2   3
+    /// ```
     ///
     /// Or in another notation: `Add(1, Multiply(Power(2, 3), 4)`
     fn parse_expression_with_min_precedence(

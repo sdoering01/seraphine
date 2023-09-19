@@ -15,10 +15,9 @@ use termion::{
 };
 
 use crate::{
-    error::ParseError,
+    error::{ParseError, SeraphineError},
     eval::Context,
     tokenizer::{Token, TokenKind},
-    SeraphineError,
 };
 
 static mut DEBUG_FILE: OnceCell<File> = OnceCell::new();
