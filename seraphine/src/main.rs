@@ -1,8 +1,8 @@
 use std::process;
 
-#[cfg(feature = "repl")]
-use seraphine::repl;
-use seraphine::{error::SeraphineError, eval::Context};
+use seraphine_core::{error::SeraphineError, eval::Context};
+
+mod repl;
 
 fn eval_file(path: &str) -> Result<(), SeraphineError> {
     let mut ctx = Context::new();
@@ -19,7 +19,7 @@ fn eval_file(path: &str) -> Result<(), SeraphineError> {
     }
 }
 
-fn main() -> std::io::Result<()> {
+pub fn main() -> std::io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 {
         if eval_file(&args[1]).is_err() {
@@ -27,14 +27,6 @@ fn main() -> std::io::Result<()> {
         }
         Ok(())
     } else {
-        #[cfg(feature = "repl")]
-        {
-            repl::repl()
-        }
-        #[cfg(not(feature = "repl"))]
-        {
-            eprintln!("No file specified");
-            process::exit(1);
-        }
+        repl::repl()
     }
 }

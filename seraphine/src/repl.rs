@@ -14,7 +14,7 @@ use termion::{
     raw::{IntoRawMode, RawTerminal},
 };
 
-use crate::{
+use seraphine_core::{
     error::{ParseError, SeraphineError},
     eval::Context,
     tokenizer::{Token, TokenKind},

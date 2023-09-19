@@ -3,8 +3,6 @@ pub mod error;
 pub mod eval;
 pub mod io;
 pub mod parser;
-#[cfg(feature = "repl")]
-pub mod repl;
 pub mod tokenizer;
 
 #[cfg(test)]

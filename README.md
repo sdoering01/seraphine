@@ -92,5 +92,11 @@ be placed in the directory `target/release`.
 
 ## Testing
 
-All features of Seraphine are covered by tests. Use `cargo test` to run the
-test suite.
+All features of Seraphine are covered by tests. Use `cargo test --workspace` to
+run the test suite.
+
+## Workspace structure
+
+- `seraphine-core` contains the core functionality (tokenizer, parser,
+  evaluation)
+- `seraphine` contains the executable for the CLI

@@ -42,8 +42,13 @@ dependencies = [
 name = "seraphine"
 version = "0.1.0"
 dependencies = [
+ "seraphine-core",
  "termion",
 ]
+
+[[package]]
+name = "seraphine-core"
+version = "0.1.0"
 
 [[package]]
 name = "termion"
