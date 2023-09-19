@@ -7,7 +7,7 @@ use std::{
 };
 
 use termion::{
-    self,
+    self, color,
     cursor::DetectCursorPos,
     event::{Event, Key},
     input::TermRead,
@@ -59,15 +59,20 @@ Ctrl+D: exit (if input is empty)
 #[derive(Debug)]
 struct ReplWriter {
     stdout: std::io::Stdout,
+    fg_color_string: Option<String>,
 }
 
 impl Write for ReplWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if let Some(color_str) = &self.fg_color_string {
+            self.stdout.write_all(color_str.as_bytes())?;
+        }
+
         let mut line_start_idx = 0;
         let mut idx = 0;
         for b in buf {
             if *b == b'\n' {
-                let _ = self.stdout.write(&buf[line_start_idx..idx])?;
+                self.stdout.write_all(&buf[line_start_idx..idx])?;
                 write_newline(&mut self.stdout)?;
                 line_start_idx = idx + 1;
             }
@@ -75,7 +80,12 @@ impl Write for ReplWriter {
         }
 
         // Write the rest of the buffer
-        let _ = self.stdout.write(&buf[line_start_idx..idx])?;
+        self.stdout.write_all(&buf[line_start_idx..idx])?;
+
+        if self.fg_color_string.is_some() {
+            self.stdout.write_all(color::Reset.fg_str().as_bytes())?;
+            self.flush()?;
+        }
 
         Ok(buf.len())
     }
@@ -89,6 +99,14 @@ impl ReplWriter {
     fn new() -> ReplWriter {
         ReplWriter {
             stdout: std::io::stdout(),
+            fg_color_string: None,
+        }
+    }
+
+    fn with_color(fg_color_string: impl Into<String>) -> ReplWriter {
+        ReplWriter {
+            stdout: std::io::stdout(),
+            fg_color_string: Some(fg_color_string.into()),
         }
     }
 }
@@ -146,7 +164,7 @@ impl Repl {
         let ctx = Context::builder()
             .stdout(ReplWriter::new())
             .stderr(ReplWriter::new())
-            .debug_writer(Some(ReplWriter::new()))
+            .debug_writer(Some(ReplWriter::with_color(color::LightBlack.fg_str())))
             .build();
 
         let stdout = WrappedStdout(std::io::stdout().into_raw_mode()?);
@@ -244,7 +262,7 @@ impl Repl {
                         }
                         Err(err) => {
                             let formatted_err = err.format(&self.input, "<repl>");
-                            self.write_displayable(formatted_err)?;
+                            self.write_error(formatted_err)?;
                             self.input.clear();
                         }
                     };
@@ -443,7 +461,24 @@ impl Repl {
 
     fn write_displayable(&mut self, d: impl Display) -> std::io::Result<()> {
         self.prepare_non_prompt_writing()?;
-        write_displayable(&mut self.stdout.0, d)
+        let string = d.to_string();
+        debug!("write_displayable: {}\n", string);
+        for line in string.lines() {
+            write!(self.stdout.0, "{}", line)?;
+            self.write_newline()?;
+        }
+        Ok(())
+    }
+
+    fn write_error(&mut self, e: impl Display) -> std::io::Result<()> {
+        self.prepare_non_prompt_writing()?;
+        write!(self.stdout.0, "{}", termion::color::Fg(termion::color::Red))?;
+        self.write_displayable(e)?;
+        write!(
+            self.stdout.0,
+            "{}",
+            termion::color::Fg(termion::color::Reset)
+        )
     }
 
     fn write_newline(&mut self) -> std::io::Result<()> {
@@ -464,16 +499,6 @@ impl Repl {
     fn flush(&mut self) -> std::io::Result<()> {
         self.stdout.0.flush()
     }
-}
-
-fn write_displayable(mut stdout: impl Write, d: impl Display) -> std::io::Result<()> {
-    let string = d.to_string();
-    debug!("write_displayable: {}\n", string);
-    for line in string.lines() {
-        write!(stdout, "{}", line)?;
-        write_newline(&mut stdout)?;
-    }
-    Ok(())
 }
 
 fn write_newline(mut stdout: impl Write) -> std::io::Result<()> {
