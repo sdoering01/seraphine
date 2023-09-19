@@ -7,8 +7,8 @@ the process of transforming human-readable source code into something
 executable. That's why its language core is implemented without external
 dependencies. Due to the nature of the interpreter being very rudementary,
 Seraphine is currently very slow. In numbers, the [sudoku
-example](examples/sudoku.sr) is ~6 times slower than an equivalent Python
-implementation and ~440 times slower than an equivalent Rust implementation on
+example](examples/sudoku.sr) is ~3 times slower than an equivalent Python
+implementation and ~230 times slower than an equivalent Rust implementation on
 my machine.
 
 The best way to get a glimpse of a language is an example. So here you go:

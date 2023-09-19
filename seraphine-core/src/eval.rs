@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     fmt::{Debug, Display},
     io::{stderr, stdin, stdout, BufRead, BufReader, Read, Write},
     rc::Rc,
@@ -57,7 +57,7 @@ pub enum Value {
     String(String),
     Function(Function),
     List(Rc<RefCell<Vec<Value>>>),
-    Object(Rc<RefCell<HashMap<String, Value>>>),
+    Object(Rc<RefCell<BTreeMap<String, Value>>>),
 }
 
 impl Display for Value {
@@ -732,7 +732,7 @@ impl Function {
     ) -> Result<Self, EvalError> {
         let func_name = func_name.map(|name| name.to_string());
 
-        let mut arg_set = HashSet::new();
+        let mut arg_set = BTreeSet::new();
         for name in &arg_names {
             if !arg_set.insert(name) {
                 return Err(EvalError::DuplicateArgName {
@@ -858,13 +858,13 @@ impl Debug for FunctionKind {
 }
 
 struct Scope {
-    variables: HashMap<String, Value>,
+    variables: BTreeMap<String, Value>,
 }
 
 impl Scope {
     pub fn new() -> Self {
         Self {
-            variables: HashMap::new(),
+            variables: BTreeMap::new(),
         }
     }
 
@@ -1466,7 +1466,7 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
             Value::List(Rc::new(RefCell::new(values)))
         }
         Ast::ObjectLiteral(key_value_pairs) => {
-            let mut object = HashMap::new();
+            let mut object = BTreeMap::new();
             for (key, value) in key_value_pairs {
                 let value = evaluate(value, ctx)?;
                 object.insert(key.clone(), value);
