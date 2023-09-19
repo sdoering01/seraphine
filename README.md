@@ -89,3 +89,8 @@ evaluate a file with `cargo run -- my_file.sr`. For better performance you
 should use the release build by putting the `--release` flag after `cargo run`.
 To just build an executable, use `cargo build --release`. The executable will
 be placed in the directory `target/release`.
+
+## Testing
+
+All features of Seraphine are covered by tests. Use `cargo test` to run the
+test suite.
