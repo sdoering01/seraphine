@@ -1,0 +1,5 @@
+println("Hello, please enter two numbers!")
+num1 = read_line()
+num2 = read_line()
+sum = parse_number(num1) + parse_number(num2)
+println(num1, "+", num2, "=", sum)

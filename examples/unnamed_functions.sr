@@ -1,0 +1,6 @@
+fn apply_to_both(f, a, b) {
+    println(f(a))
+    println(f(b))
+}
+
+apply_to_both(fn (num) { num * 2 }, 3, 5)

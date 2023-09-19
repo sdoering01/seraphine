@@ -1,0 +1,17 @@
+fn gcd_recur(a, b) {
+    if (b == 0) {
+        return a
+    }
+    gcd_recur(b, a % b)
+}
+
+fn gcd(a, b) {
+    if (a > 0 && b > 0) {
+        return gcd_recur(a, b)
+    }
+}
+
+num1 = 48
+num2 = 18
+
+println("Greatest common divisor of", num1, "and", num2, "is", gcd(num1, num2))
