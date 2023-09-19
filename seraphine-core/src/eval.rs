@@ -1089,6 +1089,95 @@ impl Context {
             Ok(Value::Number(num))
         });
 
+        self.add_builtin_function("range", None, |_ctx, _this, args| {
+            // TODO: Implement backwards stepping
+            fn make_range(start: i64, end: i64, step: i64) -> Result<Vec<Value>, EvalError> {
+                if step == 0 {
+                    return Err(EvalError::GenericError(
+                        "range: step cannot be 0".to_string(),
+                    ));
+                }
+
+                if step > 0 {
+                    Ok((start..end)
+                        .into_iter()
+                        .step_by(step as usize)
+                        .map(|n| Value::Number(n as f64))
+                        .collect())
+                } else {
+                    // TODO: This could panic for i64::MIN
+                    let step = -step;
+
+                    // `end` is not inclusive but `start` is; `+ 1` since end is the smaller number
+                    // in this case
+                    Ok(((end + 1)..=start)
+                        .into_iter()
+                        .rev()
+                        .step_by(step as usize)
+                        .map(|n| Value::Number(n as f64))
+                        .collect())
+                }
+            }
+
+            // TODO: Limit arguments to range 1..=3 in a better way
+            if args.is_empty() {
+                return Err(EvalError::FunctionWrongArgAmount {
+                    name: Some("range".to_string()),
+                    expected: 1,
+                    got: args.len(),
+                });
+            } else if args.len() > 3 {
+                return Err(EvalError::FunctionWrongArgAmount {
+                    name: Some("range".to_string()),
+                    expected: 3,
+                    got: args.len(),
+                });
+            }
+
+            let range = if args.len() == 1 {
+                args[0].assert_type(Type::Number)?;
+                let Value::Number(end) = args[0] else {
+                    unreachable!()
+                };
+
+                // TODO: Fix this
+                let end = end as i64;
+
+                make_range(0, end, 1)?
+            } else {
+                args[0].assert_type(Type::Number)?;
+                args[1].assert_type(Type::Number)?;
+                if args.len() == 3 {
+                    args[2].assert_type(Type::Number)?;
+                }
+
+                let Value::Number(start) = args[0] else {
+                    unreachable!()
+                };
+                let Value::Number(end) = args[1] else {
+                    unreachable!()
+                };
+
+                let step = if args.len() == 3 {
+                    let Value::Number(step) = args[2] else {
+                        unreachable!()
+                    };
+                    step
+                } else {
+                    1.0
+                };
+
+                // TODO: Fix this
+                let start = start as i64;
+                let end = end as i64;
+                let step = step as i64;
+
+                make_range(start, end, step)?
+            };
+
+            Ok(Value::List(Rc::new(RefCell::new(range))))
+        });
+
         // TODO: Scope functions to a separate namespace like `math`, so they can be used via
         // `math.is_nan(42)`
         self.add_builtin_function("is_nan", Some(1), |_ctx, _this, args| {

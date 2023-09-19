@@ -1948,4 +1948,23 @@ mod tests {
         ";
         assert_eq_num!(eval_str(code).unwrap(), 6.0);
     }
+
+    #[test]
+    fn test_builtin_range() {
+        assert_eq_num_list!(eval_str("range(3)").unwrap(), [0.0, 1.0, 2.0]);
+        assert_eq_num_list!(eval_str("range(1, 3)").unwrap(), [1.0, 2.0]);
+        assert_eq_num_list!(eval_str("range(3, 3)").unwrap(), []);
+        assert_eq_num_list!(eval_str("range(10, 3)").unwrap(), []);
+        assert_eq_num_list!(eval_str("range(1, 10, 3)").unwrap(), [1.0, 4.0, 7.0]);
+
+        assert_eq_num_list!(eval_str("range(2, 3, -1)").unwrap(), []);
+        assert_eq_num_list!(eval_str("range(3, 3, -1)").unwrap(), []);
+        assert_eq_num_list!(eval_str("range(3, 0, -1)").unwrap(), [3.0, 2.0, 1.0]);
+        assert_eq_num_list!(eval_str("range(10, 3, -2)").unwrap(), [10.0, 8.0, 6.0, 4.0]);
+        assert_eq_num_list!(eval_str("range(10, 4, -2)").unwrap(), [10.0, 8.0, 6.0]);
+
+        assert!(eval_str("range()").is_err());
+        assert!(eval_str("range(1, 2, 0)").is_err());
+        assert!(eval_str("range(1, 2, 3, 4)").is_err());
+    }
 }

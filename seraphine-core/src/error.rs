@@ -162,6 +162,7 @@ impl ParseError {
 
 #[derive(Debug)]
 pub enum EvalError {
+    GenericError(String),
     VariableNotDefined(String),
     FunctionWrongArgAmount {
         name: Option<String>,
@@ -202,6 +203,7 @@ impl Display for EvalError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use EvalError::*;
         match self {
+            GenericError(msg) => write!(f, "{}", msg),
             VariableNotDefined(name) => write!(f, "Variable with name '{}' is not defined", name),
             FunctionWrongArgAmount {
                 name,
