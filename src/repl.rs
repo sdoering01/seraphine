@@ -96,13 +96,6 @@ impl Write for ReplWriter {
 }
 
 impl ReplWriter {
-    fn new() -> ReplWriter {
-        ReplWriter {
-            stdout: std::io::stdout(),
-            fg_color_string: None,
-        }
-    }
-
     fn with_color(fg_color_string: impl Into<String>) -> ReplWriter {
         ReplWriter {
             stdout: std::io::stdout(),
@@ -162,8 +155,6 @@ struct Repl {
 impl Repl {
     fn new() -> std::io::Result<Repl> {
         let ctx = Context::builder()
-            .stdout(ReplWriter::new())
-            .stderr(ReplWriter::new())
             .debug_writer(Some(ReplWriter::with_color(color::LightBlack.fg_str())))
             .build();
 
@@ -237,7 +228,13 @@ impl Repl {
                         return Ok(());
                     }
 
-                    match self.ctx.eval_str(&self.input) {
+                    // TODO: Implement this "properly", so that one can use repl functionality
+                    // (move the cursor, delete word, ...) when reading from stdin
+                    self.stdout.0.suspend_raw_mode()?;
+                    let eval_result = self.ctx.eval_str(&self.input);
+                    self.stdout.0.activate_raw_mode()?;
+
+                    match eval_result {
                         Ok(result) => {
                             let (cursor_x, _) = self.stdout.0.cursor_pos()?;
                             if cursor_x > 1 {
