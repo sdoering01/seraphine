@@ -463,6 +463,16 @@ impl Value {
         }
     }
 
+    fn get_iterable(self) -> Result<Vec<Value>, EvalError> {
+        match self {
+            Value::List(l) => Ok(l.borrow().clone()),
+            _ => {
+                let error = format!("Cannot iterate over value of type {}", self.get_type());
+                Err(EvalError::TypeError(error))
+            }
+        }
+    }
+
     fn add(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
         match (self, rhs) {
@@ -1439,6 +1449,23 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
         }
         Ast::WhileLoop { condition, body } => {
             while evaluate(condition, ctx)?.as_bool() {
+                match evaluate(body, ctx) {
+                    Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => continue,
+                    Err(EvalError::InternalControlFlow(ControlFlow::Break)) => break,
+                    e @ Err(_) => return e,
+                    Ok(_) => (),
+                }
+            }
+            NULL_VALUE
+        }
+        Ast::ForLoop {
+            variable,
+            iterable,
+            body,
+        } => {
+            let iterable = evaluate(iterable, ctx)?;
+            for value in iterable.get_iterable()? {
+                ctx.set_var(variable, value);
                 match evaluate(body, ctx) {
                     Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => continue,
                     Err(EvalError::InternalControlFlow(ControlFlow::Break)) => break,

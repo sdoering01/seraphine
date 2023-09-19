@@ -72,6 +72,11 @@ pub enum Ast {
         condition: Box<Ast>,
         body: Box<Ast>,
     },
+    ForLoop {
+        variable: String,
+        iterable: Box<Ast>,
+        body: Box<Ast>,
+    },
     Continue,
     Break,
     Return(Option<Box<Ast>>),
@@ -199,6 +204,7 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Keyword(Keyword::If) => (Some(self.parse_if_statement()?), true),
                 TokenKind::Keyword(Keyword::While) => (Some(self.parse_while_loop()?), true),
+                TokenKind::Keyword(Keyword::For) => (Some(self.parse_for_loop()?), true),
                 TokenKind::Keyword(Keyword::Continue) => {
                     self.next();
                     (Some(Ast::Continue), true)
@@ -665,6 +671,32 @@ impl<'a> Parser<'a> {
 
         Ok(Ast::WhileLoop {
             condition: Box::new(condition),
+            body: Box::new(body),
+        })
+    }
+
+    fn parse_for_loop(&mut self) -> Result<Ast, ParseError> {
+        // for ( <name> in <expr> ) { <body> }
+        self.expect(TokenKind::Keyword(Keyword::For))?;
+        self.skip_newlines();
+        self.expect(TokenKind::LParen)?;
+        self.skip_newlines();
+        let variable = self.expect_identifier()?.to_string();
+        self.skip_newlines();
+        self.expect(TokenKind::Keyword(Keyword::In))?;
+        self.skip_newlines();
+        let iterable = self.parse_expression()?;
+        self.skip_newlines();
+        self.expect(TokenKind::RParen)?;
+        self.skip_newlines();
+
+        self.expect(TokenKind::LBrace)?;
+        let body = self.parse_block()?;
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(Ast::ForLoop {
+            variable,
+            iterable: Box::new(iterable),
             body: Box::new(body),
         })
     }

@@ -1869,4 +1869,83 @@ mod tests {
         ";
         assert!(eval_str(code).is_err());
     }
+
+    #[test]
+    fn test_for_loops() {
+        let code = "\
+            sum = 0
+            for (i in [1, 2, 3]) {
+                sum = sum + i
+            }
+            sum
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 6.0);
+
+        let code = "\
+            fn get_numbers() {
+                [1, 2, 3]
+            }
+            sum = 0
+            for (i in get_numbers()) {
+                sum = sum + i
+            }
+            sum
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 6.0);
+
+        let code = "\
+            sum = 0
+            for (i in [1, 2, 3]) {
+                if (i == 2) {
+                    continue
+                }
+                sum = sum + i
+            }
+            sum
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 4.0);
+
+        let code = "\
+            sum = 0
+            for (i in [1, 2, 3]) {
+                if (i == 2) {
+                    break
+                }
+                sum = sum + i
+            }
+            sum
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 1.0);
+
+        assert!(eval_str("for (i in 1) { }").is_err());
+
+        assert!(eval_str("for (i [1, 2, 3]) { }").is_err());
+        assert!(eval_str("for (in [1, 2, 3]) { }").is_err());
+        assert!(eval_str("for (i in) { }").is_err());
+        assert!(eval_str("for (in) { }").is_err());
+    }
+
+    #[test]
+    fn test_newlines_in_for_loop() {
+        let code = "\
+            sum = 0
+            for
+                (
+                    i
+                    in
+                    [
+                        1
+                        ,
+                        2
+                        ,
+                        3
+                    ]
+                )
+            {
+                sum = sum + i
+            }
+            sum
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 6.0);
+    }
 }
