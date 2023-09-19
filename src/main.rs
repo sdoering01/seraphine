@@ -1,6 +1,8 @@
 use std::process;
 
-use seraphine::{error::SeraphineError, eval::Context, repl};
+#[cfg(feature = "repl")]
+use seraphine::repl;
+use seraphine::{error::SeraphineError, eval::Context};
 
 fn eval_file(path: &str) -> Result<(), SeraphineError> {
     let mut ctx = Context::new();
@@ -25,6 +27,14 @@ fn main() -> std::io::Result<()> {
         }
         Ok(())
     } else {
-        repl::repl()
+        #[cfg(feature = "repl")]
+        {
+            repl::repl()
+        }
+        #[cfg(not(feature = "repl"))]
+        {
+            eprintln!("No file specified");
+            process::exit(1);
+        }
     }
 }

@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    error::{SeraphineError, EvalError},
+    error::{EvalError, SeraphineError},
     parser::{parse, Ast},
     tokenizer::tokenize,
 };
