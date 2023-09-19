@@ -1,0 +1,24 @@
+// This function returns a new counter object. Since the last expression is
+// returned automatically, we can simply use double curly braces.
+fn new_counter(initial_count) {{
+    count: initial_count,
+    previous_counts: [],
+    increment() {
+        this.previous_counts.push(this.count)
+        this.count = this.count + 1
+    },
+}}
+
+counter = new_counter(42)
+println("Counter at", counter.count)
+counter.increment()
+counter.increment()
+counter.increment()
+println("Counter at", counter.count)
+
+initial_count = counter.previous_counts[0]
+if (initial_count == 42) {
+    println("we started at the answer!")
+} else {
+    println("we didn't start at the answer!")
+}

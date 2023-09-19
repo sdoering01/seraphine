@@ -39,7 +39,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-calculator"
+name = "seraphine"
 version = "0.1.0"
 dependencies = [
  "termion",
