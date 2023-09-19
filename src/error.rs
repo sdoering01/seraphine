@@ -12,16 +12,16 @@ use crate::{
 #[derive(Debug)]
 // Clippy warns that the Error suffix should be removed, but it makes sense here
 #[allow(clippy::enum_variant_names)]
-pub enum CalcError {
+pub enum SeraphineError {
     TokenizeError(TokenizeError),
     ParseError(ParseError),
     EvalError(EvalError),
     IoError(io::Error),
 }
 
-impl Display for CalcError {
+impl Display for SeraphineError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use CalcError::*;
+        use SeraphineError::*;
         match self {
             TokenizeError(e) => write!(f, "Tokenize error: {}", e),
             ParseError(e) => write!(f, "Parse error: {}", e),
@@ -31,9 +31,9 @@ impl Display for CalcError {
     }
 }
 
-impl CalcError {
+impl SeraphineError {
     pub fn format(&self, input: &str, file_name: &str) -> String {
-        use CalcError::*;
+        use SeraphineError::*;
         match self {
             TokenizeError(e) => e.format(input, file_name),
             ParseError(e) => e.format(input, file_name),
@@ -42,19 +42,19 @@ impl CalcError {
     }
 }
 
-impl From<TokenizeError> for CalcError {
+impl From<TokenizeError> for SeraphineError {
     fn from(e: TokenizeError) -> Self {
         Self::TokenizeError(e)
     }
 }
 
-impl From<ParseError> for CalcError {
+impl From<ParseError> for SeraphineError {
     fn from(e: ParseError) -> Self {
         Self::ParseError(e)
     }
 }
 
-impl From<EvalError> for CalcError {
+impl From<EvalError> for SeraphineError {
     fn from(e: EvalError) -> Self {
         match e {
             EvalError::Io(e) => Self::IoError(e),
@@ -63,7 +63,7 @@ impl From<EvalError> for CalcError {
     }
 }
 
-impl From<io::Error> for CalcError {
+impl From<io::Error> for SeraphineError {
     fn from(e: io::Error) -> Self {
         Self::IoError(e)
     }

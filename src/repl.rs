@@ -18,7 +18,7 @@ use crate::{
     error::ParseError,
     eval::Context,
     tokenizer::{Token, TokenKind},
-    CalcError,
+    SeraphineError,
 };
 
 static mut DEBUG_FILE: OnceCell<File> = OnceCell::new();
@@ -244,7 +244,7 @@ impl Repl {
                             self.write_displayable(result)?;
                             self.input.clear();
                         }
-                        Err(CalcError::ParseError(
+                        Err(SeraphineError::ParseError(
                             ParseError::NoTokensLeft
                             | ParseError::UnexpectedToken {
                                 token:

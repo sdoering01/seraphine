@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    error::{CalcError, EvalError},
+    error::{SeraphineError, EvalError},
     parser::{parse, Ast},
     tokenizer::tokenize,
 };
@@ -988,7 +988,7 @@ impl Context {
         ContextBuilder::default()
     }
 
-    pub fn eval_str(&mut self, s: &str) -> Result<Value, CalcError> {
+    pub fn eval_str(&mut self, s: &str) -> Result<Value, SeraphineError> {
         let tokens = tokenize(s)?;
 
         #[cfg(debug_assertions)]

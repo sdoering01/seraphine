@@ -8,10 +8,10 @@ mod parser;
 mod repl;
 mod tokenizer;
 
-use error::CalcError;
+use error::SeraphineError;
 use eval::Context;
 
-fn eval_file(path: &str) -> Result<(), CalcError> {
+fn eval_file(path: &str) -> Result<(), SeraphineError> {
     let mut ctx = Context::new();
     let contents = std::fs::read_to_string(path)?;
     match ctx.eval_str(&contents) {
@@ -45,11 +45,11 @@ mod tests {
     use super::*;
     use eval::Value;
 
-    fn eval_str(s: &str) -> Result<Value, CalcError> {
+    fn eval_str(s: &str) -> Result<Value, SeraphineError> {
         Context::new().eval_str(s)
     }
 
-    fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<Value, CalcError> {
+    fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<Value, SeraphineError> {
         ctx.eval_str(s)
     }
 
