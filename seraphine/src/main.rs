@@ -7,15 +7,11 @@ mod repl;
 fn eval_file(path: &str) -> Result<(), SeraphineError> {
     let mut ctx = Context::new();
     let contents = std::fs::read_to_string(path)?;
-    match ctx.eval_str(&contents) {
-        Ok(result) => {
-            println!("{}", result);
-            Ok(())
-        }
-        Err(e) => {
-            eprintln!("{}", e.format(&contents, path));
-            Err(e)
-        }
+    if let Err(e) = ctx.eval_str(&contents) {
+        eprintln!("{}", e.format(&contents, path));
+        Err(e)
+    } else {
+        Ok(())
     }
 }
 
