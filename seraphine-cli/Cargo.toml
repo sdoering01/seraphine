@@ -3,7 +3,7 @@
 
 [package]
 name = "seraphine-cli"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 description = "CLI for the Seraphine programming language"
@@ -15,3 +15,7 @@ seraphine-core = { path = "../seraphine-core", version = "0.1.0" }
 
 # Raw terminal for REPL
 termion = "2.0.1"
+
+[[bin]]
+name = "seraphine"
+path = "src/main.rs"
