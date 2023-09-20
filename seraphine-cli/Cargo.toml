@@ -1,6 +1,3 @@
-# before publishing
-# - remove path dependencies
-
 [package]
 name = "seraphine-cli"
 version = "0.1.1"
