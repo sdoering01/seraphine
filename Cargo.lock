@@ -39,7 +39,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "seraphine"
+name = "seraphine-cli"
 version = "0.1.0"
 dependencies = [
  "seraphine-core",

@@ -1,4 +1,4 @@
 [workspace]
 resolver = "2"
-members = ["seraphine-core", "seraphine"]
-default-members = ["seraphine"]
+members = ["seraphine-core", "seraphine-cli"]
+default-members = ["seraphine-cli"]

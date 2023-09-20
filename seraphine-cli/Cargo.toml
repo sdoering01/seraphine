@@ -1,8 +1,17 @@
+# before publishing
+# - remove path dependencies
+
 [package]
-name = "seraphine-core"
+name = "seraphine-cli"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
 description = "CLI for the Seraphine programming language"
 homepage = "https://github.com/sdoering01/seraphine"
 repository = "https://github.com/sdoering01/seraphine"
+
+[dependencies]
+seraphine-core = { path = "../seraphine-core", version = "0.1.0" }
+
+# Raw terminal for REPL
+termion = "2.0.1"
