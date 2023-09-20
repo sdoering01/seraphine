@@ -20,23 +20,38 @@ fn new_counter(initial_count) {{
     count: initial_count,
     previous_counts: [],
     increment() {
+        // `this` receiver to access object
         this.previous_counts.push(this.count)
         this.count = this.count + 1
     },
+    for_each_count(func) {
+        // Boolean coercion
+        if (func) {
+            // For loops to iterate over lists
+            for (c in this.previous_counts) {
+                func(c)
+            }
+        }
+    }
 }}
 
 counter = new_counter(42)
 println("Counter at", counter.count)
-counter.increment()
-counter.increment()
-counter.increment()
+while (counter.count < 45) {
+    counter.increment()
+}
 println("Counter at", counter.count)
+
+// Anonymous functions (closures are currently not possible)
+counter.for_each_count(fn (count) {
+    println("Counter was", count)
+})
 
 initial_count = counter.previous_counts[0]
 if (initial_count == 42) {
-    println("we started at the answer!")
+    println("We started at the answer!")
 } else {
-    println("we didn't start at the answer!")
+    println("We didn't start at the answer!")
 }
 ```
 
