@@ -32,7 +32,14 @@ fn new_counter(initial_count) {{
                 func(c)
             }
         }
-    }
+    },
+    get_initial_count() {
+        if (this.previous_counts.length == 0) {
+            return this.count
+        } else {
+            return this.previous_counts[0]
+        }
+    },
 }}
 
 counter = new_counter(42)
@@ -47,12 +54,7 @@ counter.for_each_count(fn (count) {
     println("Counter was", count)
 })
 
-initial_count = counter.previous_counts[0]
-if (initial_count == 42) {
-    println("We started at the answer!")
-} else {
-    println("We didn't start at the answer!")
-}
+println("Initial count was", counter.get_initial_count())
 ```
 
 More examples can be found in the [examples directory](examples).
