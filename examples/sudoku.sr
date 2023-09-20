@@ -62,7 +62,6 @@ fn solve_field_recursive(field, pos, num) {
                 }
             }
         }
-        
 
         // Check row
         row = pos[0]
@@ -71,7 +70,6 @@ fn solve_field_recursive(field, pos, num) {
                 return false
             }
         }
-
 
         // Check column
         col = pos[1]
