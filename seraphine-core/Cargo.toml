@@ -1,8 +1,8 @@
 [package]
 name = "seraphine-core"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
-description = "CLI for the Seraphine programming language"
+description = "Core of the seraphine programming language"
 homepage = "https://github.com/sdoering01/seraphine"
 repository = "https://github.com/sdoering01/seraphine"
