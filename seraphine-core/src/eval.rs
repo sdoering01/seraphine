@@ -1100,7 +1100,6 @@ impl Context {
 
                 if step > 0 {
                     Ok((start..end)
-                        .into_iter()
                         .step_by(step as usize)
                         .map(|n| Value::Number(n as f64))
                         .collect())
@@ -1111,7 +1110,6 @@ impl Context {
                     // `end` is not inclusive but `start` is; `+ 1` since end is the smaller number
                     // in this case
                     Ok(((end + 1)..=start)
-                        .into_iter()
                         .rev()
                         .step_by(step as usize)
                         .map(|n| Value::Number(n as f64))
