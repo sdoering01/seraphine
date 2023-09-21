@@ -116,4 +116,4 @@ run the test suite.
 
 - `seraphine-core` contains the core functionality (tokenizer, parser,
   evaluation)
-- `seraphine` contains the executable for the CLI
+- `seraphine-cli` contains the executable for the CLI and REPL functionality
