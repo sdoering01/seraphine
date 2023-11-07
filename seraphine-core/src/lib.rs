@@ -1,9 +1,13 @@
-mod common;
+pub mod bytecode;
 pub mod error;
 pub mod eval;
 pub mod io;
 pub mod parser;
 pub mod tokenizer;
+pub mod vm;
+
+mod common;
+mod macros;
 
 #[cfg(test)]
 mod tests {
@@ -13,6 +17,10 @@ mod tests {
         error::SeraphineError,
         eval::{Context, Value},
         io,
+        macros::{
+            assert_eq_bool, assert_eq_num, assert_eq_num_list, assert_eq_num_object, assert_eq_str,
+            assert_null,
+        },
     };
 
     fn eval_str(s: &str) -> Result<Value, SeraphineError> {
@@ -21,119 +29,6 @@ mod tests {
 
     fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<Value, SeraphineError> {
         ctx.eval_str(s)
-    }
-
-    macro_rules! assert_null {
-        ( $value:expr ) => {
-            match $value {
-                $crate::eval::Value::Null => {}
-                value => {
-                    ::std::panic!("value is not null: {:?}", value);
-                }
-            }
-        };
-    }
-
-    macro_rules! assert_eq_num {
-        ( $left:expr, $right:expr ) => {
-            match ($left, $right) {
-                (value, expected) => {
-                    let $crate::eval::Value::Number(got) = value else {
-                        ::std::panic!("value is not a number");
-                    };
-                    ::std::assert_eq!(got, expected);
-                }
-            }
-        };
-        ( $left:expr, $right:expr, $eps:expr ) => {
-            match ($left, $right) {
-                (value, expected) => {
-                    let $crate::eval::Value::Number(got) = value else {
-                        ::std::panic!("value is not a number");
-                    };
-                    ::std::assert!((got - expected).abs() < $eps);
-                }
-            }
-        };
-    }
-
-    macro_rules! assert_eq_bool {
-        ( $left:expr, $right:expr ) => {
-            match ($left, $right) {
-                (value, expected) => {
-                    let $crate::eval::Value::Bool(got) = value else {
-                        ::std::panic!("value is not a bool");
-                    };
-                    ::std::assert_eq!(got, expected);
-                }
-            }
-        };
-    }
-
-    macro_rules! assert_eq_str {
-        ( $left:expr, $right:expr ) => {
-            match ($left, $right) {
-                (value, expected) => {
-                    let $crate::eval::Value::String(got) = value else {
-                        ::std::panic!("value is not a string");
-                    };
-                    ::std::assert_eq!(got, expected);
-                }
-            }
-        };
-    }
-
-    macro_rules! assert_eq_num_list {
-        ( $left:expr, $right:expr ) => {
-            match ($left, $right) {
-                (value, expected) => {
-                    let $crate::eval::Value::List(got) = value else {
-                        ::std::panic!("value is not a list");
-                    };
-                    let got = got.borrow();
-                    ::std::assert_eq!(got.len(), expected.len(), "length mismatch");
-                    for (i, (got, expected)) in got.iter().zip(expected.iter()).enumerate() {
-                        let $crate::eval::Value::Number(got) = got else {
-                            ::std::panic!("value is not a number");
-                        };
-                        ::std::assert_eq!(*got, *expected, "at index {}", i);
-                    }
-                }
-            }
-        };
-    }
-
-    /// Asserts that the given object has the given keys and values.
-    ///
-    /// Note that the object syntax is different from the one used in the language, since
-    /// `macro_rules` cannot parse it.
-    ///
-    /// Example:
-    /// ```rust
-    /// assert_eq_num_object!(eval_str("{ a: 1, b: 2 }"), { "a" => 1.0, "b" => 2.0 });
-    /// ```
-    macro_rules! assert_eq_num_object {
-        ( $obj:expr, { $( $key:expr => $val:expr ),* } ) => {
-            {
-                let $crate::eval::Value::Object(obj) = $obj else {
-                    ::std::panic!("value is not an object");
-                };
-                #[allow(unused_variables)]
-                let obj = obj.borrow();
-                #[allow(unused_mut)]
-                let mut keys = 0;
-                $(
-                    let got_val = obj.get($key);
-                    ::std::assert!(got_val.is_some(), r#"key "{}" not found in object"#, $key);
-                    let $crate::eval::Value::Number(got) = got_val.unwrap() else {
-                        ::std::panic!("value is not a number");
-                    };
-                    ::std::assert_eq!(*got, $val, "at key {}", $key);
-                    keys += 1;
-                )*
-                ::std::assert_eq!(keys, obj.len(), "length mismatch");
-            }
-        };
     }
 
     #[test]
@@ -1951,20 +1846,45 @@ mod tests {
 
     #[test]
     fn test_builtin_range() {
-        assert_eq_num_list!(eval_str("range(3)").unwrap(), [0.0, 1.0, 2.0]);
-        assert_eq_num_list!(eval_str("range(1, 3)").unwrap(), [1.0, 2.0]);
-        assert_eq_num_list!(eval_str("range(3, 3)").unwrap(), []);
-        assert_eq_num_list!(eval_str("range(10, 3)").unwrap(), []);
-        assert_eq_num_list!(eval_str("range(1, 10, 3)").unwrap(), [1.0, 4.0, 7.0]);
+        fn eval_range_to_list(range: &str) -> Result<Value, SeraphineError> {
+            let code = format!(
+                "\
+                list = []
+                for (i in {range}) {{
+                    list.push(i)
+                }}
+                list
+            "
+            );
+            eval_str(&code)
+        }
 
-        assert_eq_num_list!(eval_str("range(2, 3, -1)").unwrap(), []);
-        assert_eq_num_list!(eval_str("range(3, 3, -1)").unwrap(), []);
-        assert_eq_num_list!(eval_str("range(3, 0, -1)").unwrap(), [3.0, 2.0, 1.0]);
-        assert_eq_num_list!(eval_str("range(10, 3, -2)").unwrap(), [10.0, 8.0, 6.0, 4.0]);
-        assert_eq_num_list!(eval_str("range(10, 4, -2)").unwrap(), [10.0, 8.0, 6.0]);
+        assert_eq_num_list!(eval_range_to_list("range(3)").unwrap(), [0.0, 1.0, 2.0]);
+        assert_eq_num_list!(eval_range_to_list("range(1, 3)").unwrap(), [1.0, 2.0]);
+        assert_eq_num_list!(eval_range_to_list("range(3, 3)").unwrap(), []);
+        assert_eq_num_list!(eval_range_to_list("range(10, 3)").unwrap(), []);
+        assert_eq_num_list!(
+            eval_range_to_list("range(1, 10, 3)").unwrap(),
+            [1.0, 4.0, 7.0]
+        );
 
-        assert!(eval_str("range()").is_err());
-        assert!(eval_str("range(1, 2, 0)").is_err());
-        assert!(eval_str("range(1, 2, 3, 4)").is_err());
+        assert_eq_num_list!(eval_range_to_list("range(2, 3, -1)").unwrap(), []);
+        assert_eq_num_list!(eval_range_to_list("range(3, 3, -1)").unwrap(), []);
+        assert_eq_num_list!(
+            eval_range_to_list("range(3, 0, -1)").unwrap(),
+            [3.0, 2.0, 1.0]
+        );
+        assert_eq_num_list!(
+            eval_range_to_list("range(10, 3, -2)").unwrap(),
+            [10.0, 8.0, 6.0, 4.0]
+        );
+        assert_eq_num_list!(
+            eval_range_to_list("range(10, 4, -2)").unwrap(),
+            [10.0, 8.0, 6.0]
+        );
+
+        assert!(eval_range_to_list("range()").is_err());
+        assert!(eval_range_to_list("range(1, 2, 0)").is_err());
+        assert!(eval_range_to_list("range(1, 2, 3, 4)").is_err());
     }
 }

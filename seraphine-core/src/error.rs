@@ -16,6 +16,7 @@ pub enum SeraphineError {
     TokenizeError(TokenizeError),
     ParseError(ParseError),
     EvalError(EvalError),
+    VmError(VmError),
     IoError(io::Error),
 }
 
@@ -26,6 +27,7 @@ impl Display for SeraphineError {
             TokenizeError(e) => write!(f, "Tokenize error: {}", e),
             ParseError(e) => write!(f, "Parse error: {}", e),
             EvalError(e) => write!(f, "Eval error: {}", e),
+            VmError(e) => write!(f, "VM error: {}", e),
             IoError(e) => write!(f, "IO error: {}", e),
         }
     }
@@ -60,6 +62,12 @@ impl From<EvalError> for SeraphineError {
             EvalError::Io(e) => Self::IoError(e),
             _ => Self::EvalError(e),
         }
+    }
+}
+
+impl From<VmError> for SeraphineError {
+    fn from(e: VmError) -> Self {
+        Self::VmError(e)
     }
 }
 
@@ -271,6 +279,30 @@ impl Display for EvalError {
             Io(e) => {
                 write!(f, "IO error: {}", e)
             }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum VmError {
+    EvalError(EvalError),
+    StackUnderflow,
+    UndefinedVariable(String),
+}
+
+impl From<EvalError> for VmError {
+    fn from(e: EvalError) -> Self {
+        Self::EvalError(e)
+    }
+}
+
+impl Display for VmError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use VmError::*;
+        match self {
+            EvalError(e) => write!(f, "{}", e),
+            StackUnderflow => write!(f, "Stack underflow"),
+            UndefinedVariable(name) => write!(f, "Variable '{}' is not defined", name),
         }
     }
 }

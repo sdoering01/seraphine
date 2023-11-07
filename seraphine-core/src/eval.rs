@@ -10,6 +10,7 @@ use crate::{
     error::{EvalError, SeraphineError},
     parser::{parse, Ast},
     tokenizer::tokenize,
+    vm::Scope as VmScope,
 };
 
 // TODO: Find out how to increase this limit, since the stack of the main thread can overflow if
@@ -32,6 +33,7 @@ pub enum Type {
     Function,
     List,
     Object,
+    Iterator,
 }
 
 impl Display for Type {
@@ -45,9 +47,14 @@ impl Display for Type {
             Function => write!(f, "function"),
             List => write!(f, "list"),
             Object => write!(f, "object"),
+            Iterator => write!(f, "iterator"),
         }
     }
 }
+
+pub trait SeraphineIterator: Iterator<Item = Value> + Debug {}
+
+impl<T> SeraphineIterator for T where T: Iterator<Item = Value> + Debug {}
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -58,6 +65,7 @@ pub enum Value {
     Function(Function),
     List(Rc<RefCell<Vec<Value>>>),
     Object(Rc<RefCell<BTreeMap<String, Value>>>),
+    Iterator(Rc<RefCell<dyn SeraphineIterator>>),
 }
 
 impl Display for Value {
@@ -76,6 +84,7 @@ impl Display for Value {
             String(s) => write!(f, r#""{}""#, s),
             Function(func) => write!(f, "{:?}", func),
             List(_) | Object(_) => print_potentially_self_referential(self, f),
+            Iterator(i) => write!(f, "iterator at {:?}", i.as_ptr()),
         }
     }
 }
@@ -141,7 +150,7 @@ fn print_potentially_self_referential_recursive(
 }
 
 impl Value {
-    fn get_type(&self) -> Type {
+    pub fn get_type(&self) -> Type {
         use Value::*;
         match self {
             Null => Type::Null,
@@ -151,6 +160,7 @@ impl Value {
             Function(..) => Type::Function,
             List(..) => Type::List,
             Object(..) => Type::Object,
+            Iterator(..) => Type::Iterator,
         }
     }
 
@@ -162,14 +172,14 @@ impl Value {
         Ok(())
     }
 
-    fn convert_to_string(&self) -> String {
+    pub(crate) fn convert_to_string(&self) -> String {
         match self {
             Value::String(s) => s.clone(),
             other => other.to_string(),
         }
     }
 
-    fn as_bool(&self) -> bool {
+    pub(crate) fn as_bool(&self) -> bool {
         match self {
             Value::Null => false,
             Value::Number(n) => *n != 0.0,
@@ -178,10 +188,11 @@ impl Value {
             Value::Function(..) => true,
             Value::List(lst) => !lst.borrow().is_empty(),
             Value::Object(obj) => !obj.borrow().is_empty(),
+            Value::Iterator(_) => true,
         }
     }
 
-    fn call(&self, ctx: &mut Context, args: Vec<Value>) -> Result<Value, EvalError> {
+    pub(crate) fn call(&self, ctx: &mut Context, args: Vec<Value>) -> Result<Value, EvalError> {
         match self {
             Value::Function(func) => {
                 let maybe_expected_args = func.get_arg_count();
@@ -204,7 +215,7 @@ impl Value {
         }
     }
 
-    fn get_member(&self, member: &str) -> Result<Value, EvalError> {
+    pub(crate) fn get_member(&self, member: &str) -> Result<Value, EvalError> {
         match self {
             Value::String(s) => match member {
                 "length" => Ok(Value::Number(s.len() as f64)),
@@ -368,7 +379,7 @@ impl Value {
         }
     }
 
-    fn set_member(self, member: &str, value: Value) -> Result<(), EvalError> {
+    pub(crate) fn set_member(self, member: &str, value: Value) -> Result<(), EvalError> {
         match self {
             Value::Object(o) => {
                 let mut obj = o.borrow_mut();
@@ -382,7 +393,7 @@ impl Value {
         }
     }
 
-    fn get_index(self, idx: Value) -> Result<Value, EvalError> {
+    pub(crate) fn get_index(self, idx: Value) -> Result<Value, EvalError> {
         match self {
             Value::List(l) => {
                 idx.assert_type(Type::Number)?;
@@ -427,7 +438,7 @@ impl Value {
         }
     }
 
-    fn set_index(self, idx: Value, value: Value) -> Result<(), EvalError> {
+    pub(crate) fn set_index(self, idx: Value, value: Value) -> Result<(), EvalError> {
         match self {
             Value::List(l) => {
                 idx.assert_type(Type::Number)?;
@@ -463,9 +474,10 @@ impl Value {
         }
     }
 
-    fn get_iterable(self) -> Result<Vec<Value>, EvalError> {
+    pub(crate) fn make_iterator(self) -> Result<Rc<RefCell<dyn SeraphineIterator>>, EvalError> {
         match self {
-            Value::List(l) => Ok(l.borrow().clone()),
+            Value::List(l) => Ok(Rc::new(RefCell::new(l.borrow().clone().into_iter()))),
+            Value::Iterator(i) => Ok(i),
             _ => {
                 let error = format!("Cannot iterate over value of type {}", self.get_type());
                 Err(EvalError::TypeError(error))
@@ -473,7 +485,17 @@ impl Value {
         }
     }
 
-    fn add(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn advance_iterator(&self) -> Result<Option<Value>, EvalError> {
+        match self {
+            Value::Iterator(i) => Ok(i.borrow_mut().next()),
+            _ => {
+                let error = format!("Cannot advance type of {} since it is not an iterator", self.get_type());
+                Err(EvalError::TypeError(error))
+            }
+        }
+    }
+
+    pub(crate) fn add(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
         match (self, rhs) {
             (Number(l), Number(r)) => Ok(Number(l + r)),
@@ -489,7 +511,7 @@ impl Value {
         }
     }
 
-    fn subtract(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn subtract(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
         match (self, rhs) {
             (Number(l), Number(r)) => Ok(Number(l - r)),
@@ -504,7 +526,7 @@ impl Value {
         }
     }
 
-    fn multiply(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn multiply(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
         match (self, rhs) {
             (Number(l), Number(r)) => Ok(Number(l * r)),
@@ -519,7 +541,7 @@ impl Value {
         }
     }
 
-    fn divide(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn divide(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
         match (self, rhs) {
             (Number(l), Number(r)) => Ok(Number(l / r)),
@@ -534,7 +556,7 @@ impl Value {
         }
     }
 
-    fn modulo(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn modulo(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
         match (self, rhs) {
             (Number(l), Number(r)) => Ok(Number(l % r)),
@@ -549,7 +571,7 @@ impl Value {
         }
     }
 
-    fn power(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn power(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
         match (self, rhs) {
             (Number(l), Number(r)) => Ok(Number(l.powf(r))),
@@ -564,7 +586,7 @@ impl Value {
         }
     }
 
-    fn negate(self) -> Result<Value, EvalError> {
+    pub(crate) fn negate(self) -> Result<Value, EvalError> {
         use Value::*;
         match self {
             Number(l) => Ok(Number(-l)),
@@ -575,7 +597,7 @@ impl Value {
         }
     }
 
-    fn bool_negate(self) -> Result<Value, EvalError> {
+    pub(crate) fn bool_negate(self) -> Result<Value, EvalError> {
         Ok(Value::Bool(!self.as_bool()))
     }
 
@@ -594,15 +616,15 @@ impl Value {
         }
     }
 
-    fn equal(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn equal(self, rhs: Self) -> Result<Value, EvalError> {
         Ok(Value::Bool(self.inner_equal(&rhs)))
     }
 
-    fn unequal(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn unequal(self, rhs: Self) -> Result<Value, EvalError> {
         Ok(Value::Bool(!self.inner_equal(&rhs)))
     }
 
-    fn less_than(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn less_than(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
         let lt = match (self, rhs) {
             (Number(l), Number(r)) => l < r,
@@ -619,7 +641,7 @@ impl Value {
         Ok(Bool(lt))
     }
 
-    fn greater_than(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn greater_than(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
         let gt = match (self, rhs) {
             (Number(l), Number(r)) => l > r,
@@ -636,7 +658,7 @@ impl Value {
         Ok(Bool(gt))
     }
 
-    fn less_than_or_equal(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn less_than_or_equal(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
         let le = match (self, rhs) {
             (Number(l), Number(r)) => l <= r,
@@ -653,7 +675,7 @@ impl Value {
         Ok(Bool(le))
     }
 
-    fn greater_than_or_equal(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn greater_than_or_equal(self, rhs: Self) -> Result<Value, EvalError> {
         use Value::*;
         let ge = match (self, rhs) {
             (Number(l), Number(r)) => l >= r,
@@ -670,7 +692,7 @@ impl Value {
         Ok(Bool(ge))
     }
 
-    fn and(
+    pub(crate) fn and(
         self,
         rhs_evaluator: impl FnOnce() -> Result<Self, EvalError>,
     ) -> Result<Value, EvalError> {
@@ -678,7 +700,7 @@ impl Value {
         Ok(Value::Bool(result))
     }
 
-    fn or(
+    pub(crate) fn or(
         self,
         rhs_evaluator: impl FnOnce() -> Result<Self, EvalError>,
     ) -> Result<Value, EvalError> {
@@ -691,8 +713,8 @@ const NULL_VALUE: Value = Value::Null;
 
 #[derive(Clone)]
 pub struct Function {
-    kind: Rc<FunctionKind>,
-    receiver: Option<Box<Value>>,
+    pub kind: Rc<FunctionKind>,
+    pub receiver: Option<Box<Value>>,
 }
 
 impl Debug for Function {
@@ -725,7 +747,7 @@ impl Function {
         }
     }
 
-    pub fn new_user_defined(
+    pub fn new_user_defined_ast(
         func_name: Option<&str>,
         arg_names: Vec<String>,
         body: Ast,
@@ -743,7 +765,7 @@ impl Function {
         }
 
         Ok(Function {
-            kind: Rc::new(FunctionKind::UserDefined {
+            kind: Rc::new(FunctionKind::UserDefinedAst {
                 name: func_name,
                 arg_names,
                 body,
@@ -752,10 +774,28 @@ impl Function {
         })
     }
 
+    pub fn new_user_defined_vm(
+        name: Option<impl Into<String>>,
+        param_count: usize,
+        entrypoint: usize,
+        parent_scope: VmScope,
+    ) -> Function {
+        Function {
+            kind: Rc::new(FunctionKind::UserDefinedVm {
+                param_count,
+                entrypoint,
+                name: name.map(|n| n.into()),
+                parent_scope,
+            }),
+            receiver: None,
+        }
+    }
+
     pub fn get_name(&self) -> Option<String> {
         match self.kind.as_ref() {
             FunctionKind::Builtin { name, .. } => Some(name.clone()),
-            FunctionKind::UserDefined { name, .. } => name.clone(),
+            FunctionKind::UserDefinedAst { name, .. }
+            | FunctionKind::UserDefinedVm { name, .. } => name.clone(),
         }
     }
 
@@ -764,7 +804,7 @@ impl Function {
 
         match self.kind.as_ref() {
             FunctionKind::Builtin { func, .. } => func(ctx, receiver, args),
-            FunctionKind::UserDefined {
+            FunctionKind::UserDefinedAst {
                 arg_names, body, ..
             } => {
                 if ctx.call_stack.len() >= CALL_STACK_SIZE_LIMIT - 1 {
@@ -797,13 +837,19 @@ impl Function {
                 ctx.function_scope = ctx.call_stack.pop();
                 call_result
             }
+            FunctionKind::UserDefinedVm { .. } => {
+                return Err(EvalError::GenericError(
+                    "got user defined vm function in AST walking mode".to_string(),
+                ));
+            }
         }
     }
 
     fn get_arg_count(&self) -> Option<usize> {
         match self.kind.as_ref() {
             FunctionKind::Builtin { n_args, .. } => *n_args,
-            FunctionKind::UserDefined { arg_names, .. } => Some(arg_names.len()),
+            FunctionKind::UserDefinedAst { arg_names, .. } => Some(arg_names.len()),
+            FunctionKind::UserDefinedVm { param_count, .. } => Some(*param_count),
         }
     }
 
@@ -833,10 +879,16 @@ pub enum FunctionKind {
         n_args: Option<usize>,
         func: BuiltinFunctionClosure,
     },
-    UserDefined {
+    UserDefinedAst {
         name: Option<String>,
         arg_names: Vec<String>,
         body: Ast,
+    },
+    UserDefinedVm {
+        param_count: usize,
+        entrypoint: usize,
+        name: Option<String>,
+        parent_scope: VmScope,
     },
 }
 
@@ -846,7 +898,8 @@ impl Debug for FunctionKind {
             FunctionKind::Builtin { name, .. } => {
                 write!(f, "built-in function '{}'", name)
             }
-            FunctionKind::UserDefined { name, .. } => {
+            FunctionKind::UserDefinedVm { name, .. }
+            | FunctionKind::UserDefinedAst { name, .. } => {
                 if let Some(name) = name {
                     write!(f, "function '{}'", name)
                 } else {
@@ -1091,7 +1144,11 @@ impl Context {
 
         self.add_builtin_function("range", None, |_ctx, _this, args| {
             // TODO: Implement backwards stepping
-            fn make_range(start: i64, end: i64, step: i64) -> Result<Vec<Value>, EvalError> {
+            fn make_range(
+                start: i64,
+                end: i64,
+                step: i64,
+            ) -> Result<Rc<RefCell<dyn SeraphineIterator>>, EvalError> {
                 if step == 0 {
                     return Err(EvalError::GenericError(
                         "range: step cannot be 0".to_string(),
@@ -1099,21 +1156,23 @@ impl Context {
                 }
 
                 if step > 0 {
-                    Ok((start..end)
-                        .step_by(step as usize)
-                        .map(|n| Value::Number(n as f64))
-                        .collect())
+                    Ok(Rc::new(RefCell::new(
+                        (start..end)
+                            .step_by(step as usize)
+                            .map(|n| Value::Number(n as f64)),
+                    )))
                 } else {
                     // TODO: This could panic for i64::MIN
                     let step = -step;
 
                     // `end` is not inclusive but `start` is; `+ 1` since end is the smaller number
                     // in this case
-                    Ok(((end + 1)..=start)
-                        .rev()
-                        .step_by(step as usize)
-                        .map(|n| Value::Number(n as f64))
-                        .collect())
+                    Ok(Rc::new(RefCell::new(
+                        ((end + 1)..=start)
+                            .rev()
+                            .step_by(step as usize)
+                            .map(|n| Value::Number(n as f64)),
+                    )))
                 }
             }
 
@@ -1173,7 +1232,7 @@ impl Context {
                 make_range(start, end, step)?
             };
 
-            Ok(Value::List(Rc::new(RefCell::new(range))))
+            Ok(Value::Iterator(range))
         });
 
         // TODO: Scope functions to a separate namespace like `math`, so they can be used via
@@ -1421,13 +1480,16 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
             arg_names,
             body,
         } => {
-            let func =
-                Function::new_user_defined(Some(name.as_str()), arg_names.clone(), *body.clone())?;
+            let func = Function::new_user_defined_ast(
+                Some(name.as_str()),
+                arg_names.clone(),
+                *body.clone(),
+            )?;
             ctx.set_var(name, Value::Function(func));
             NULL_VALUE
         }
         Ast::UnnamedFunction { arg_names, body } => {
-            let func = Function::new_user_defined(None, arg_names.clone(), *body.clone())?;
+            let func = Function::new_user_defined_ast(None, arg_names.clone(), *body.clone())?;
             Value::Function(func)
         }
         Ast::MemberAccess {
@@ -1551,7 +1613,7 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
             body,
         } => {
             let iterable = evaluate(iterable, ctx)?;
-            for value in iterable.get_iterable()? {
+            for value in iterable.make_iterator()?.borrow_mut().into_iter() {
                 ctx.set_var(variable, value);
                 match evaluate(body, ctx) {
                     Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => continue,
