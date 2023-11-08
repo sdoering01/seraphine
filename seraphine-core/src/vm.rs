@@ -1,9 +1,16 @@
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::BTreeMap,
+    io::{stderr, stdin, stdout, BufReader},
+    rc::Rc,
+};
 
 use crate::{
-    bytecode::{BinaryOp, Bytecode, Instruction, UnaryOp},
+    bytecode::{BinaryOp, Bytecode, Instruction, UnaryOp, VariableLookupTable},
     error::VmError,
     eval::{Function, FunctionKind, Value},
+    runtime::common::RuntimeContext,
+    stdlib::{get_standard_functions, get_standard_variables},
 };
 
 #[derive(Debug)]
@@ -108,38 +115,60 @@ struct CallStackItem {
     continue_at_instruction: usize,
 }
 
-#[derive(Debug)]
 pub struct Vm {
     bytecode: Bytecode,
+    variable_names: VariableLookupTable,
     stack: Stack,
     scope: Scope,
     instruction_pointer: usize,
     call_stack: Vec<CallStackItem>,
     stack_save_slots: Vec<usize>,
     this_idx: usize,
+    ctx: RuntimeContext,
 }
 
 impl Vm {
     pub fn new(bytecode: Bytecode) -> Vm {
-        let global_scope = Scope::with_len(bytecode.variable_names.len());
+        let mut variable_names = VariableLookupTable::from(bytecode.variable_names.clone());
 
-        // TODO: Insert builtin functions and variables
+        let mut standard_values = get_standard_variables();
+        standard_values.append(&mut get_standard_functions());
+        for (name, _val) in &standard_values {
+            variable_names.lookup_or_insert(name);
+        }
 
-        let Some(this_idx) = bytecode.variable_names.iter().position(|n| n == "this") else {
+        let global_scope = Scope::with_len(variable_names.len());
+        for (name, val) in standard_values {
+            // Safety: Value name was inserted already, so the lookup can't fail
+            let idx = variable_names.lookup(name).unwrap();
+            global_scope.set(idx, val);
+        }
+
+        let Some(this_idx) = variable_names.lookup("this") else {
             // TODO: Replace with Result
             panic!("corrupt bytecode: `this` not in variable names");
         };
 
         let stack_save_slots = vec![0; bytecode.stack_save_slots];
 
+        // TODO: Make configurable via builder
+        let ctx = RuntimeContext::new(
+            BufReader::new(Box::new(stdin())),
+            Box::new(stdout()),
+            Box::new(stderr()),
+            Some(Box::new(stdout())),
+        );
+
         Vm {
             bytecode,
+            variable_names,
             stack: Stack::new(),
             scope: global_scope,
             instruction_pointer: 0,
             call_stack: Vec::new(),
             stack_save_slots,
             this_idx,
+            ctx,
         }
     }
 
@@ -221,7 +250,7 @@ impl Vm {
                     Some(value) => self.stack.push(value.clone()),
                     None => {
                         return Err(VmError::UndefinedVariable(
-                            self.bytecode.variable_names[*idx].clone(),
+                            self.variable_names.get_name(*idx).to_string(),
                         ))
                     }
                 },
@@ -300,7 +329,7 @@ impl Vm {
                 } => self
                     .stack
                     .push(Value::Function(Function::new_user_defined_vm(
-                        name_idx.map(|idx| self.bytecode.variable_names[idx].clone()),
+                        name_idx.map(|idx| self.variable_names.get_name(idx).to_string()),
                         *param_count,
                         *entrypoint,
                         self.scope.clone(),
@@ -308,48 +337,62 @@ impl Vm {
                 Instruction::FunctionCall { arg_count } => {
                     let args = self.stack.pop_n(*arg_count)?;
                     let callable = self.stack.pop()?;
-                    match callable {
-                        Value::Function(Function { kind, receiver }) => {
-                            match kind.as_ref() {
-                                // TODO: Replace with Result
-                                FunctionKind::UserDefinedAst { .. } => {
-                                    panic!("cannot call user defined ast functions in vm")
-                                }
-                                // TODO: Implement this without `eval::Context`
-                                FunctionKind::Builtin { .. } => todo!(),
-                                FunctionKind::UserDefinedVm {
-                                    param_count,
-                                    entrypoint,
-                                    parent_scope,
-                                    ..
-                                } => {
-                                    if arg_count != param_count {
-                                        // TODO: Replace with Result
-                                        panic!("function wants {} parameters, but only {} were provided", param_count, arg_count);
-                                    }
 
-                                    let mut scope = Scope::with_parent(&parent_scope);
-                                    if let Some(receiver) = receiver {
-                                        scope.set(self.this_idx, receiver.as_ref().clone());
-                                    }
-                                    std::mem::swap(&mut scope, &mut self.scope);
+                    // TODO: Replace with Result
+                    let Value::Function(func) = callable else {
+                        panic!("cannot call value of type {}", callable.get_type());
+                    };
 
-                                    let mut stack = Stack::from(args);
-                                    std::mem::swap(&mut stack, &mut self.stack);
-
-                                    self.call_stack.push(CallStackItem {
-                                        prev_stack: stack,
-                                        prev_scope: scope,
-                                        continue_at_instruction: self.instruction_pointer + 1,
-                                    });
-
-                                    self.instruction_pointer = *entrypoint;
-                                    continue;
-                                }
-                            }
+                    if let Some(want_arg_count) = func.get_arg_count() {
+                        if want_arg_count != *arg_count {
+                            // TODO: Replace with Result
+                            panic!(
+                                "function wants {} parameters, but only {} were provided",
+                                want_arg_count, arg_count
+                            );
                         }
+                    }
+
+                    match func.kind.as_ref() {
                         // TODO: Replace with Result
-                        value => panic!("cannot call value of type {}", value.get_type()),
+                        FunctionKind::UserDefinedAst { .. } => {
+                            panic!("cannot call user defined ast functions in vm")
+                        }
+                        // TODO: Implement this without `eval::Context`
+                        FunctionKind::Builtin {
+                            func: rust_func, ..
+                        } => {
+                            let receiver = func.receiver.as_ref().map(|r| r.as_ref().to_owned());
+
+                            // TODO: Create CallStackItem, when runtime error messages with stack
+                            // trace are implemented
+
+                            let val = rust_func(&mut self.ctx, receiver, args)?;
+                            self.stack.push(val);
+                        }
+                        FunctionKind::UserDefinedVm {
+                            entrypoint,
+                            parent_scope,
+                            ..
+                        } => {
+                            let mut scope = Scope::with_parent(&parent_scope);
+                            if let Some(receiver) = func.receiver {
+                                scope.set(self.this_idx, receiver.as_ref().clone());
+                            }
+                            std::mem::swap(&mut scope, &mut self.scope);
+
+                            let mut stack = Stack::from(args);
+                            std::mem::swap(&mut stack, &mut self.stack);
+
+                            self.call_stack.push(CallStackItem {
+                                prev_stack: stack,
+                                prev_scope: scope,
+                                continue_at_instruction: self.instruction_pointer + 1,
+                            });
+
+                            self.instruction_pointer = *entrypoint;
+                            continue;
+                        }
                     }
                 }
                 Instruction::Return => {
@@ -705,5 +748,13 @@ mod tests {
             result
         ";
         assert_eq_num!(run_str(code).unwrap(), 6.0);
+    }
+
+    #[test]
+    fn test_builtin_function_call() {
+        let code = "\
+            inspect(\"Hello, world!\")
+        ";
+        assert_eq_str!(run_str(code).unwrap(), "Hello, world!");
     }
 }

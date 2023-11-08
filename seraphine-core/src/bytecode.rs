@@ -111,11 +111,52 @@ enum InstructionContext {
     Function(usize),
 }
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct VariableLookupTable {
+    variable_names: Vec<String>,
+}
+
+impl From<VariableLookupTable> for Vec<String> {
+    fn from(value: VariableLookupTable) -> Self {
+        value.variable_names
+    }
+}
+
+impl From<Vec<String>> for VariableLookupTable {
+    fn from(value: Vec<String>) -> Self {
+        VariableLookupTable { variable_names: value }
+    }
+}
+
+impl VariableLookupTable {
+    pub(crate) fn lookup_or_insert(&mut self, var: &str) -> usize {
+        match self.lookup(var) {
+            Some(idx) => idx,
+            None => {
+                self.variable_names.push(var.to_string());
+                self.variable_names.len() - 1
+            }
+        }
+    }
+
+    pub(crate) fn lookup(&self, var: &str) -> Option<usize> {
+        self.variable_names.iter().position(|v| v == var)
+    }
+
+    pub(crate) fn get_name(&self, idx: usize) -> &str {
+        &self.variable_names[idx]
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.variable_names.len()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CodeGenerator {
     script_instructions: Vec<Instruction>,
     functions: Vec<Vec<Instruction>>,
-    variable_names: Vec<String>,
+    variable_names: VariableLookupTable,
     stack_save_slots: usize,
 
     current_instruction_context: InstructionContext,
@@ -126,7 +167,7 @@ impl CodeGenerator {
         CodeGenerator {
             script_instructions: Vec::new(),
             functions: Vec::new(),
-            variable_names: Vec::new(),
+            variable_names: VariableLookupTable::default(),
             stack_save_slots: 0,
             current_instruction_context: InstructionContext::Script,
         }
@@ -136,7 +177,7 @@ impl CodeGenerator {
         self.generate(ast);
 
         // make sure `this` is in variable names, this makes things easier in the VM
-        let _ = self.lookup_variable_index("this");
+        let _ = self.variable_names.lookup_or_insert("this");
 
         self.script_instructions.push(Instruction::End);
 
@@ -168,8 +209,9 @@ impl CodeGenerator {
                             Instruction::JumpIfTrueNoPop(*idx + current_function_entrypoint)
                     }
                     Instruction::AdvanceIteratorJumpIfDrained(idx) => {
-                        *instruction =
-                            Instruction::AdvanceIteratorJumpIfDrained(*idx + current_function_entrypoint)
+                        *instruction = Instruction::AdvanceIteratorJumpIfDrained(
+                            *idx + current_function_entrypoint,
+                        )
                     }
                     _ => (),
                 }
@@ -198,7 +240,7 @@ impl CodeGenerator {
 
         Bytecode {
             instructions,
-            variable_names: self.variable_names,
+            variable_names: self.variable_names.into(),
             functions_start_idx: script_len,
             stack_save_slots: self.stack_save_slots,
         }
@@ -304,12 +346,12 @@ impl CodeGenerator {
                 self.push_instruction(Instruction::MakeObject { n_keys });
             }
             Ast::Variable(name) => {
-                let idx = self.lookup_variable_index(&name);
+                let idx = self.variable_names.lookup_or_insert(&name);
                 self.push_instruction(Instruction::LoadVariable(idx));
             }
             Ast::Assign(name, value) => {
                 self.generate(value);
-                let idx = self.lookup_variable_index(&name);
+                let idx = self.variable_names.lookup_or_insert(&name);
                 self.push_instruction(Instruction::StoreVariable(idx));
             }
             Ast::Indexing { value, index } => {
@@ -419,7 +461,7 @@ impl CodeGenerator {
                 let loop_start_idx = self.current_instructions().len() - 1;
                 self.push_instruction(PLACEHOLDER_INSTRUCTION);
                 let advance_iterator_instruction = self.current_instructions().len() - 1;
-                let variable_idx = self.lookup_variable_index(variable);
+                let variable_idx = self.variable_names.lookup_or_insert(variable);
                 self.push_instruction(Instruction::StoreVariable(variable_idx));
                 self.generate(body);
                 self.push_instruction(Instruction::Jump(loop_start_idx));
@@ -464,12 +506,13 @@ impl CodeGenerator {
             Instruction::InternalPlaceholder(PlaceholderInstructions::PushFunction {
                 function_idx,
                 param_count: params.len(),
-                name_idx: name.map(|n| self.lookup_variable_index(n)),
+                name_idx: name.map(|n| self.variable_names.lookup_or_insert(n)),
             });
         self.push_instruction(placeholder_instruction);
 
         if let Some(name) = name {
-            let instruction = Instruction::StoreVariable(self.lookup_variable_index(name));
+            let instruction =
+                Instruction::StoreVariable(self.variable_names.lookup_or_insert(name));
             self.push_instruction(instruction);
         }
     }
@@ -486,7 +529,8 @@ impl CodeGenerator {
         // VM evaluates arguments in order and puts them on the stack. Due to the nature of a
         // stack, we have to pop them in reverse order.
         for param in params.iter().rev() {
-            let instruction = Instruction::StoreVariable(self.lookup_variable_index(param));
+            let instruction =
+                Instruction::StoreVariable(self.variable_names.lookup_or_insert(param));
             self.push_instruction(instruction);
         }
 
@@ -514,17 +558,6 @@ impl CodeGenerator {
 
     fn push_instruction(&mut self, instruction: Instruction) {
         self.current_instructions_mut().push(instruction);
-    }
-
-    fn lookup_variable_index(&mut self, var: &str) -> usize {
-        let idx = self.variable_names.iter().position(|v| v == var);
-        match idx {
-            Some(idx) => idx,
-            None => {
-                self.variable_names.push(var.to_string());
-                self.variable_names.len() - 1
-            }
-        }
     }
 
     fn new_stack_save_slot(&mut self) -> usize {

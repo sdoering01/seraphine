@@ -850,7 +850,7 @@ impl Function {
         }
     }
 
-    fn get_arg_count(&self) -> Option<usize> {
+    pub(crate) fn get_arg_count(&self) -> Option<usize> {
         match self.kind.as_ref() {
             FunctionKind::Builtin { n_args, .. } => *n_args,
             FunctionKind::UserDefinedAst { arg_names, .. } => Some(arg_names.len()),
