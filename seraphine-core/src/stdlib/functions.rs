@@ -8,7 +8,7 @@ use crate::{
 pub(super) fn _set_internal_side_effect_flag(
     ctx: &mut Context,
     _this: Option<Value>,
-    _args: &[Value],
+    _args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     ctx._internal_side_effect_flag = true;
     Ok(NULL_VALUE)
@@ -17,9 +17,9 @@ pub(super) fn _set_internal_side_effect_flag(
 pub(super) fn print(
     ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
-    print_values(&mut ctx.stdout, args)?;
+    print_values(&mut ctx.stdout, &args)?;
     ctx.stdout.flush()?;
     Ok(NULL_VALUE)
 }
@@ -27,9 +27,9 @@ pub(super) fn print(
 pub(super) fn println(
     ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
-    print_values(&mut ctx.stdout, args)?;
+    print_values(&mut ctx.stdout, &args)?;
     writeln!(ctx.stdout, "")?;
     Ok(NULL_VALUE)
 }
@@ -37,9 +37,9 @@ pub(super) fn println(
 pub(super) fn eprint(
     ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
-    print_values(&mut ctx.stderr, args)?;
+    print_values(&mut ctx.stderr, &args)?;
     ctx.stderr.flush()?;
     Ok(NULL_VALUE)
 }
@@ -47,9 +47,9 @@ pub(super) fn eprint(
 pub(super) fn eprintln(
     ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
-    print_values(&mut ctx.stderr, args)?;
+    print_values(&mut ctx.stderr, &args)?;
     writeln!(ctx.stderr, "")?;
     Ok(NULL_VALUE)
 }
@@ -57,7 +57,7 @@ pub(super) fn eprintln(
 pub(super) fn read_line(
     ctx: &mut Context,
     _this: Option<Value>,
-    _args: &[Value],
+    _args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     let mut str = String::new();
     ctx.stdin.read_line(&mut str)?;
@@ -68,7 +68,7 @@ pub(super) fn read_line(
 pub(super) fn to_string(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     Ok(Value::String(args[0].convert_to_string()))
 }
@@ -76,7 +76,7 @@ pub(super) fn to_string(
 pub(super) fn parse_number(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::String)?;
     let Value::String(ref arg) = args[0] else {
@@ -89,7 +89,7 @@ pub(super) fn parse_number(
 pub(super) fn range(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     fn make_range(
         start: i64,
@@ -185,7 +185,7 @@ pub(super) fn range(
 pub(super) fn is_nan(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -197,7 +197,7 @@ pub(super) fn is_nan(
 pub(super) fn is_infinite(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -209,7 +209,7 @@ pub(super) fn is_infinite(
 pub(super) fn is_finite(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -221,7 +221,7 @@ pub(super) fn is_finite(
 pub(super) fn sin(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -233,7 +233,7 @@ pub(super) fn sin(
 pub(super) fn cos(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -245,7 +245,7 @@ pub(super) fn cos(
 pub(super) fn tan(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -257,7 +257,7 @@ pub(super) fn tan(
 pub(super) fn asin(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -269,7 +269,7 @@ pub(super) fn asin(
 pub(super) fn acos(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -281,7 +281,7 @@ pub(super) fn acos(
 pub(super) fn atan(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -293,7 +293,7 @@ pub(super) fn atan(
 pub(super) fn atan2(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     args[1].assert_type(Type::Number)?;
@@ -309,7 +309,7 @@ pub(super) fn atan2(
 pub(super) fn tanh(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -321,7 +321,7 @@ pub(super) fn tanh(
 pub(super) fn sinh(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -333,7 +333,7 @@ pub(super) fn sinh(
 pub(super) fn cosh(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -345,7 +345,7 @@ pub(super) fn cosh(
 pub(super) fn ln(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -357,7 +357,7 @@ pub(super) fn ln(
 pub(super) fn log2(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -369,7 +369,7 @@ pub(super) fn log2(
 pub(super) fn log10(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -381,7 +381,7 @@ pub(super) fn log10(
 pub(super) fn log(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     args[1].assert_type(Type::Number)?;
@@ -397,7 +397,7 @@ pub(super) fn log(
 pub(super) fn abs(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -409,7 +409,7 @@ pub(super) fn abs(
 pub(super) fn min(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     args[1].assert_type(Type::Number)?;
@@ -425,7 +425,7 @@ pub(super) fn min(
 pub(super) fn max(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     args[1].assert_type(Type::Number)?;
@@ -441,7 +441,7 @@ pub(super) fn max(
 pub(super) fn floor(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -453,7 +453,7 @@ pub(super) fn floor(
 pub(super) fn ceil(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -465,7 +465,7 @@ pub(super) fn ceil(
 pub(super) fn round(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -477,7 +477,7 @@ pub(super) fn round(
 pub(super) fn sqrt(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -489,7 +489,7 @@ pub(super) fn sqrt(
 pub(super) fn exp(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
@@ -501,7 +501,7 @@ pub(super) fn exp(
 pub(super) fn inspect(
     _ctx: &mut Context,
     _this: Option<Value>,
-    args: &[Value],
+    args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     println!("{}", args[0]);
     Ok(args[0].clone())

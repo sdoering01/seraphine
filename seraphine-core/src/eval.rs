@@ -207,7 +207,7 @@ impl Value {
                         });
                     }
                 }
-                func.call(ctx, &args)
+                func.call(ctx, args)
             }
             other => {
                 let error = format!("Cannot call value of type {}", other.get_type());
@@ -739,7 +739,7 @@ impl Function {
         func: F,
     ) -> Self
     where
-        F: Fn(&mut Context, Option<Value>, &[Value]) -> Result<Value, EvalError> + 'static,
+        F: Fn(&mut Context, Option<Value>, Vec<Value>) -> Result<Value, EvalError> + 'static,
     {
         Function {
             kind: Rc::new(FunctionKind::Builtin {
@@ -803,7 +803,7 @@ impl Function {
         }
     }
 
-    pub fn call(&self, ctx: &mut Context, args: &[Value]) -> Result<Value, EvalError> {
+    pub fn call(&self, ctx: &mut Context, args: Vec<Value>) -> Result<Value, EvalError> {
         let receiver = self.receiver.as_ref().map(|r| r.as_ref().to_owned());
 
         match self.kind.as_ref() {
@@ -819,8 +819,8 @@ impl Function {
                 if let Some(recv) = receiver {
                     scope.set_var("this", recv);
                 }
-                for (name, value) in arg_names.iter().zip(args.iter()) {
-                    scope.set_var(name, value.clone());
+                for (name, value) in arg_names.iter().zip(args.into_iter()) {
+                    scope.set_var(name, value);
                 }
 
                 if let Some(function_scope) = ctx.function_scope.take() {
@@ -876,7 +876,7 @@ impl Function {
 
 // TODO: Replace Context with something that can be shared across AST-based evaluation and the VM
 pub(crate) type BuiltinFunctionClosure =
-    Box<dyn Fn(&mut Context, Option<Value>, &[Value]) -> Result<Value, EvalError>>;
+    Box<dyn Fn(&mut Context, Option<Value>, Vec<Value>) -> Result<Value, EvalError>>;
 
 pub enum FunctionKind {
     Builtin {

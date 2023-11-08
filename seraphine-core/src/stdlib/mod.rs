@@ -26,7 +26,7 @@ pub(crate) fn get_standard_functions() -> Vec<(&'static str, Value)> {
         func: F,
     ) -> (&'static str, Value)
     where
-        F: Fn(&mut Context, Option<Value>, &[Value]) -> Result<Value, EvalError> + 'static,
+        F: Fn(&mut Context, Option<Value>, Vec<Value>) -> Result<Value, EvalError> + 'static,
     {
         (
             name,
