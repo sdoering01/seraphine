@@ -16,7 +16,7 @@ mod tests {
 
     use crate::{
         error::SeraphineError,
-        eval::{Context, Function, Value},
+        eval::{Evaluator, Function, Value},
         io,
         macros::{
             assert_eq_bool, assert_eq_num, assert_eq_num_list, assert_eq_num_object, assert_eq_str,
@@ -25,11 +25,11 @@ mod tests {
     };
 
     fn eval_str(s: &str) -> Result<Value, SeraphineError> {
-        Context::new().eval_str(s)
+        Evaluator::new().eval_str(s)
     }
 
-    fn eval_str_ctx(s: &str, ctx: &mut Context) -> Result<Value, SeraphineError> {
-        ctx.eval_str(s)
+    fn eval_str_with(s: &str, eval: &mut Evaluator) -> Result<Value, SeraphineError> {
+        eval.eval_str(s)
     }
 
     #[test]
@@ -133,19 +133,19 @@ mod tests {
 
     #[test]
     fn test_variables() {
-        let mut ctx = Context::new();
-        assert!(eval_str_ctx("a = 2", &mut ctx).is_ok());
-        assert!(eval_str_ctx("b = a + 1", &mut ctx).is_ok());
-        assert!(eval_str_ctx("c = a + b", &mut ctx).is_ok());
-        assert_eq_num!(ctx.get_var("a").unwrap(), 2.0);
-        assert_eq_num!(ctx.get_var("b").unwrap(), 3.0);
-        assert_eq_num!(ctx.get_var("c").unwrap(), 5.0);
+        let mut eval = Evaluator::new();
+        assert!(eval_str_with("a = 2", &mut eval).is_ok());
+        assert!(eval_str_with("b = a + 1", &mut eval).is_ok());
+        assert!(eval_str_with("c = a + b", &mut eval).is_ok());
+        assert_eq_num!(eval.get_var("a").unwrap(), 2.0);
+        assert_eq_num!(eval.get_var("b").unwrap(), 3.0);
+        assert_eq_num!(eval.get_var("c").unwrap(), 5.0);
 
         assert!(eval_str("not_defined").is_err());
 
-        let mut ctx = Context::new();
-        assert!(eval_str_ctx("some_longer_name = 2", &mut ctx).is_ok());
-        assert_eq_num!(ctx.get_var("some_longer_name").unwrap(), 2.0);
+        let mut eval = Evaluator::new();
+        assert!(eval_str_with("some_longer_name = 2", &mut eval).is_ok());
+        assert_eq_num!(eval.get_var("some_longer_name").unwrap(), 2.0);
 
         assert!(eval_str("a b = 2").is_err());
         assert!(eval_str("2 = 2").is_err());
@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_functions() {
-        let mut ctx = Context::new();
+        let mut eval = Evaluator::new();
         let func = Function::new_builtin("add", None, Some(2), |_ctx, _this, args| {
             let Value::Number(arg1) = args[0] else {
                 unreachable!()
@@ -214,33 +214,33 @@ mod tests {
             };
             Ok(Value::Number(arg1 + arg2))
         });
-        ctx.set_var("add", Value::Function(func));
+        eval.set_var("add", Value::Function(func));
 
-        assert!(eval_str_ctx("add()", &mut ctx).is_err());
-        assert!(eval_str_ctx("add(1)", &mut ctx).is_err());
-        assert!(eval_str_ctx("add(1,)", &mut ctx).is_err());
-        assert!(eval_str_ctx("add(,1)", &mut ctx).is_err());
-        assert!(eval_str_ctx("add(1 1)", &mut ctx).is_err());
-        assert_eq_num!(eval_str_ctx("add(1, 2)", &mut ctx).unwrap(), 3.0);
-        assert!(eval_str_ctx("add(1, 2, 3)", &mut ctx).is_err());
-        assert_eq_num!(eval_str_ctx("add(1, add(2, 3))", &mut ctx).unwrap(), 6.0);
+        assert!(eval_str_with("add()", &mut eval).is_err());
+        assert!(eval_str_with("add(1)", &mut eval).is_err());
+        assert!(eval_str_with("add(1,)", &mut eval).is_err());
+        assert!(eval_str_with("add(,1)", &mut eval).is_err());
+        assert!(eval_str_with("add(1 1)", &mut eval).is_err());
+        assert_eq_num!(eval_str_with("add(1, 2)", &mut eval).unwrap(), 3.0);
+        assert!(eval_str_with("add(1, 2, 3)", &mut eval).is_err());
+        assert_eq_num!(eval_str_with("add(1, add(2, 3))", &mut eval).unwrap(), 6.0);
     }
 
     #[test]
     fn test_multiple_lines() {
-        let mut ctx = Context::new();
+        let mut eval = Evaluator::new();
 
-        eval_str_ctx(
+        eval_str_with(
             r"a = 2
             b = 3
             c = a + b",
-            &mut ctx,
+            &mut eval,
         )
         .unwrap();
 
-        assert_eq_num!(ctx.get_var("a").unwrap(), 2.0);
-        assert_eq_num!(ctx.get_var("b").unwrap(), 3.0);
-        assert_eq_num!(ctx.get_var("c").unwrap(), 5.0);
+        assert_eq_num!(eval.get_var("a").unwrap(), 2.0);
+        assert_eq_num!(eval.get_var("b").unwrap(), 3.0);
+        assert_eq_num!(eval.get_var("c").unwrap(), 5.0);
 
         assert_eq_num!(eval_str("\n42\n").unwrap(), 42.0);
         assert_eq_num!(eval_str("42\n").unwrap(), 42.0);
@@ -521,7 +521,7 @@ mod tests {
 
     #[test]
     fn test_and_operator_short_circuit() {
-        let mut ctx = Context::new();
+        let mut eval = Evaluator::new();
         let code = "\
             fn set_a() {
                 _set_internal_side_effect_flag()
@@ -529,10 +529,10 @@ mod tests {
             }
             false && set_a()
         ";
-        eval_str_ctx(code, &mut ctx).unwrap();
-        assert!(!ctx._internal_side_effect_flag);
+        eval_str_with(code, &mut eval).unwrap();
+        assert!(!eval._internal_side_effect_flag);
 
-        let mut ctx = Context::new();
+        let mut eval = Evaluator::new();
         let code = "\
             fn set_a() {
                 _set_internal_side_effect_flag()
@@ -540,8 +540,8 @@ mod tests {
             }
             true && set_a()
         ";
-        eval_str_ctx(code, &mut ctx).unwrap();
-        assert!(ctx._internal_side_effect_flag);
+        eval_str_with(code, &mut eval).unwrap();
+        assert!(eval._internal_side_effect_flag);
     }
 
     #[test]
@@ -562,7 +562,7 @@ mod tests {
 
     #[test]
     fn test_or_operator_short_circuit() {
-        let mut ctx = Context::new();
+        let mut eval = Evaluator::new();
         let code = "\
             fn set_a() {
                 _set_internal_side_effect_flag()
@@ -570,10 +570,10 @@ mod tests {
             }
             false || set_a()
         ";
-        eval_str_ctx(code, &mut ctx).unwrap();
-        assert!(ctx._internal_side_effect_flag);
+        eval_str_with(code, &mut eval).unwrap();
+        assert!(eval._internal_side_effect_flag);
 
-        let mut ctx = Context::new();
+        let mut eval = Evaluator::new();
         let code = "\
             fn set_a() {
                 _set_internal_side_effect_flag()
@@ -581,8 +581,8 @@ mod tests {
             }
             true || set_a()
         ";
-        eval_str_ctx(code, &mut ctx).unwrap();
-        assert!(!ctx._internal_side_effect_flag);
+        eval_str_with(code, &mut eval).unwrap();
+        assert!(!eval._internal_side_effect_flag);
     }
 
     #[test]
@@ -701,7 +701,7 @@ mod tests {
             add(1, 2)";
         assert_eq_num!(eval_str(code).unwrap(), 3.0);
 
-        let mut ctx = Context::new();
+        let mut eval = Evaluator::new();
         let code = "\
             fn my_abs(num) {
                 if (num < 0) {
@@ -709,10 +709,10 @@ mod tests {
                 }
                 num
             }";
-        assert!(eval_str_ctx(code, &mut ctx).is_ok());
-        assert_eq_num!(eval_str_ctx("my_abs(-1)", &mut ctx).unwrap(), 1.0);
-        assert_eq_num!(eval_str_ctx("my_abs(42)", &mut ctx).unwrap(), 42.0);
-        assert_eq_num!(eval_str_ctx("my_abs(-0.23)", &mut ctx).unwrap(), 0.23);
+        assert!(eval_str_with(code, &mut eval).is_ok());
+        assert_eq_num!(eval_str_with("my_abs(-1)", &mut eval).unwrap(), 1.0);
+        assert_eq_num!(eval_str_with("my_abs(42)", &mut eval).unwrap(), 42.0);
+        assert_eq_num!(eval_str_with("my_abs(-0.23)", &mut eval).unwrap(), 0.23);
 
         let code = "\
             fn a() {
@@ -803,18 +803,18 @@ mod tests {
     fn test_string_concatenation() {
         assert_eq_str!(eval_str(r#""abc" + "def""#).unwrap(), "abcdef");
 
-        let mut ctx = Context::new();
+        let mut eval = Evaluator::new();
         let code = r#"
             a = "abc"
             b = "def"
             c = a + b
         "#;
-        eval_str_ctx(code, &mut ctx).unwrap();
-        assert_eq_str!(ctx.get_var("a").unwrap(), "abc");
-        assert_eq_str!(ctx.get_var("b").unwrap(), "def");
-        assert_eq_str!(ctx.get_var("c").unwrap(), "abcdef");
-        assert_eq_str!(eval_str_ctx(r#"a + "def""#, &mut ctx).unwrap(), "abcdef");
-        assert_eq_str!(eval_str_ctx(r#""abc" + b"#, &mut ctx).unwrap(), "abcdef");
+        eval_str_with(code, &mut eval).unwrap();
+        assert_eq_str!(eval.get_var("a").unwrap(), "abc");
+        assert_eq_str!(eval.get_var("b").unwrap(), "def");
+        assert_eq_str!(eval.get_var("c").unwrap(), "abcdef");
+        assert_eq_str!(eval_str_with(r#"a + "def""#, &mut eval).unwrap(), "abcdef");
+        assert_eq_str!(eval_str_with(r#""abc" + b"#, &mut eval).unwrap(), "abcdef");
     }
 
     #[test]
@@ -844,65 +844,65 @@ mod tests {
     fn test_print() {
         let (mut stdout_reader, stdout_writer) = io::create_channel_reader_writer();
         let (mut stderr_reader, stderr_writer) = io::create_channel_reader_writer();
-        let mut ctx = Context::builder()
+        let mut eval = Evaluator::builder()
             .stdout(stdout_writer)
             .stderr(stderr_writer)
             .build();
 
-        eval_str_ctx(r#"println()"#, &mut ctx).unwrap();
+        eval_str_with(r#"println()"#, &mut eval).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "\n");
         assert_eq!(stderr_reader.read_available_to_string(), "");
 
-        eval_str_ctx(r#"println("Hello, world!")"#, &mut ctx).unwrap();
+        eval_str_with(r#"println("Hello, world!")"#, &mut eval).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "Hello, world!\n");
         assert_eq!(stderr_reader.read_available_to_string(), "");
 
-        eval_str_ctx(r#"println("Hello", ",", "world", "!")"#, &mut ctx).unwrap();
+        eval_str_with(r#"println("Hello", ",", "world", "!")"#, &mut eval).unwrap();
         assert_eq!(
             stdout_reader.read_available_to_string(),
             "Hello , world !\n"
         );
         assert_eq!(stderr_reader.read_available_to_string(), "");
 
-        eval_str_ctx(r#"eprintln()"#, &mut ctx).unwrap();
+        eval_str_with(r#"eprintln()"#, &mut eval).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "");
         assert_eq!(stderr_reader.read_available_to_string(), "\n");
 
-        eval_str_ctx(r#"eprintln("Goodbye, world!")"#, &mut ctx).unwrap();
+        eval_str_with(r#"eprintln("Goodbye, world!")"#, &mut eval).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "");
         assert_eq!(
             stderr_reader.read_available_to_string(),
             "Goodbye, world!\n"
         );
 
-        eval_str_ctx(r#"eprintln("Goodbye", ",", "world", "!")"#, &mut ctx).unwrap();
+        eval_str_with(r#"eprintln("Goodbye", ",", "world", "!")"#, &mut eval).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "");
         assert_eq!(
             stderr_reader.read_available_to_string(),
             "Goodbye , world !\n"
         );
 
-        eval_str_ctx(r#"print()"#, &mut ctx).unwrap();
+        eval_str_with(r#"print()"#, &mut eval).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "");
         assert_eq!(stderr_reader.read_available_to_string(), "");
 
-        eval_str_ctx(r#"print(42)"#, &mut ctx).unwrap();
+        eval_str_with(r#"print(42)"#, &mut eval).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "42");
         assert_eq!(stderr_reader.read_available_to_string(), "");
 
-        eval_str_ctx(r#"print(1, 1, 2, 3, 5)"#, &mut ctx).unwrap();
+        eval_str_with(r#"print(1, 1, 2, 3, 5)"#, &mut eval).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "1 1 2 3 5");
         assert_eq!(stderr_reader.read_available_to_string(), "");
 
-        eval_str_ctx(r#"eprint()"#, &mut ctx).unwrap();
+        eval_str_with(r#"eprint()"#, &mut eval).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "");
         assert_eq!(stderr_reader.read_available_to_string(), "");
 
-        eval_str_ctx(r#"eprint(false)"#, &mut ctx).unwrap();
+        eval_str_with(r#"eprint(false)"#, &mut eval).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "");
         assert_eq!(stderr_reader.read_available_to_string(), "false");
 
-        eval_str_ctx(r#"eprint(2, 3, 5, 7, 11, true)"#, &mut ctx).unwrap();
+        eval_str_with(r#"eprint(2, 3, 5, 7, 11, true)"#, &mut eval).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "");
         assert_eq!(stderr_reader.read_available_to_string(), "2 3 5 7 11 true");
     }
@@ -910,21 +910,24 @@ mod tests {
     #[test]
     fn test_read_line() {
         let (reader, mut writer) = io::create_channel_reader_writer();
-        let mut ctx = Context::builder().stdin(reader).build();
+        let mut eval = Evaluator::builder().stdin(reader).build();
 
         writer.write_all(b"This is some input\n").unwrap();
         assert_eq_str!(
-            eval_str_ctx("read_line()", &mut ctx).unwrap(),
+            eval_str_with("read_line()", &mut eval).unwrap(),
             "This is some input"
         );
 
         writer.write_all(b"\n").unwrap();
-        assert_eq_str!(eval_str_ctx("read_line()", &mut ctx).unwrap(), "");
+        assert_eq_str!(eval_str_with("read_line()", &mut eval).unwrap(), "");
 
         writer.write_all(b"first line\nsecond line\n").unwrap();
-        assert_eq_str!(eval_str_ctx("read_line()", &mut ctx).unwrap(), "first line");
         assert_eq_str!(
-            eval_str_ctx("read_line()", &mut ctx).unwrap(),
+            eval_str_with("read_line()", &mut eval).unwrap(),
+            "first line"
+        );
+        assert_eq_str!(
+            eval_str_with("read_line()", &mut eval).unwrap(),
             "second line"
         );
     }
@@ -1002,7 +1005,7 @@ mod tests {
     fn test_function_equality() {
         assert_eq_bool!(eval_str("fn () { } == fn () { }").unwrap(), false);
 
-        let mut ctx = Context::new();
+        let mut eval = Evaluator::new();
         let code = "\
             fn add1(a, b) {
                 a + b
@@ -1016,14 +1019,14 @@ mod tests {
             add1_3 = add1_2
             add2_2 = add2
         ";
-        eval_str_ctx(code, &mut ctx).unwrap();
-        assert_eq_bool!(eval_str_ctx("add1 == add2", &mut ctx).unwrap(), false);
-        assert_eq_bool!(eval_str_ctx("add1 == add1", &mut ctx).unwrap(), true);
-        assert_eq_bool!(eval_str_ctx("add1 == add1_2", &mut ctx).unwrap(), true);
-        assert_eq_bool!(eval_str_ctx("add1 == add1_3", &mut ctx).unwrap(), true);
-        assert_eq_bool!(eval_str_ctx("add1_3 == add1_3", &mut ctx).unwrap(), true);
-        assert_eq_bool!(eval_str_ctx("add1_2 == add1_3", &mut ctx).unwrap(), true);
-        assert_eq_bool!(eval_str_ctx("add1_2 == add2_2", &mut ctx).unwrap(), false);
+        eval_str_with(code, &mut eval).unwrap();
+        assert_eq_bool!(eval_str_with("add1 == add2", &mut eval).unwrap(), false);
+        assert_eq_bool!(eval_str_with("add1 == add1", &mut eval).unwrap(), true);
+        assert_eq_bool!(eval_str_with("add1 == add1_2", &mut eval).unwrap(), true);
+        assert_eq_bool!(eval_str_with("add1 == add1_3", &mut eval).unwrap(), true);
+        assert_eq_bool!(eval_str_with("add1_3 == add1_3", &mut eval).unwrap(), true);
+        assert_eq_bool!(eval_str_with("add1_2 == add1_3", &mut eval).unwrap(), true);
+        assert_eq_bool!(eval_str_with("add1_2 == add2_2", &mut eval).unwrap(), false);
 
         let code = "\
             o = { answer() { 42 } }
@@ -1178,10 +1181,10 @@ mod tests {
             matrix = [[1, 2], [3, 4]]
             matrix[0][0] = 42
         ";
-        let mut ctx = Context::new();
-        assert!(eval_str_ctx(code, &mut ctx).is_ok());
-        assert_eq_num_list!(eval_str_ctx("matrix[0]", &mut ctx).unwrap(), [42.0, 2.0]);
-        assert_eq_num_list!(eval_str_ctx("matrix[1]", &mut ctx).unwrap(), [3.0, 4.0]);
+        let mut eval = Evaluator::new();
+        assert!(eval_str_with(code, &mut eval).is_ok());
+        assert_eq_num_list!(eval_str_with("matrix[0]", &mut eval).unwrap(), [42.0, 2.0]);
+        assert_eq_num_list!(eval_str_with("matrix[1]", &mut eval).unwrap(), [3.0, 4.0]);
 
         let code = "\
             x = 1
@@ -1189,10 +1192,10 @@ mod tests {
             matrix = [[1, 2], [3, 4]]
             matrix[y][x] = 42
         ";
-        let mut ctx = Context::new();
-        assert!(eval_str_ctx(code, &mut ctx).is_ok());
-        assert_eq_num_list!(eval_str_ctx("matrix[0]", &mut ctx).unwrap(), [1.0, 2.0]);
-        assert_eq_num_list!(eval_str_ctx("matrix[1]", &mut ctx).unwrap(), [3.0, 42.0]);
+        let mut eval = Evaluator::new();
+        assert!(eval_str_with(code, &mut eval).is_ok());
+        assert_eq_num_list!(eval_str_with("matrix[0]", &mut eval).unwrap(), [1.0, 2.0]);
+        assert_eq_num_list!(eval_str_with("matrix[1]", &mut eval).unwrap(), [3.0, 42.0]);
 
         let code = "\
             fn get_x() { 0 }
@@ -1200,10 +1203,10 @@ mod tests {
             matrix = [[1, 2], [3, 4]]
             matrix[get_y()][get_x()] = 42
         ";
-        let mut ctx = Context::new();
-        assert!(eval_str_ctx(code, &mut ctx).is_ok());
-        assert_eq_num_list!(eval_str_ctx("matrix[0]", &mut ctx).unwrap(), [1.0, 2.0]);
-        assert_eq_num_list!(eval_str_ctx("matrix[1]", &mut ctx).unwrap(), [42.0, 4.0]);
+        let mut eval = Evaluator::new();
+        assert!(eval_str_with(code, &mut eval).is_ok());
+        assert_eq_num_list!(eval_str_with("matrix[0]", &mut eval).unwrap(), [1.0, 2.0]);
+        assert_eq_num_list!(eval_str_with("matrix[1]", &mut eval).unwrap(), [42.0, 4.0]);
 
         let code = "\
             fn get_list() { [1, 2, 3] }
@@ -1463,14 +1466,14 @@ mod tests {
     #[test]
     fn test_self_referential_print() {
         let (mut stdout_reader, stdout_writer) = io::create_channel_reader_writer();
-        let mut ctx = Context::builder().stdout(stdout_writer).build();
+        let mut eval = Evaluator::builder().stdout(stdout_writer).build();
 
         let code = "\
             obj = {}
             obj.a = obj
             print(obj)
         ";
-        eval_str_ctx(code, &mut ctx).unwrap();
+        eval_str_with(code, &mut eval).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "{ a: { ... } }");
 
         let code = "\
@@ -1478,7 +1481,7 @@ mod tests {
             lst.push(lst)
             print(lst)
         ";
-        eval_str_ctx(code, &mut ctx).unwrap();
+        eval_str_with(code, &mut eval).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "[[...]]");
 
         let code = "\
@@ -1486,7 +1489,7 @@ mod tests {
             lst.push({lst})
             print(lst)
         ";
-        eval_str_ctx(code, &mut ctx).unwrap();
+        eval_str_with(code, &mut eval).unwrap();
         assert_eq!(stdout_reader.read_available_to_string(), "[{ lst: [...] }]");
     }
 

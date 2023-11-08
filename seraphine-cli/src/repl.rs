@@ -16,7 +16,7 @@ use termion::{
 
 use seraphine_core::{
     error::{ParseError, SeraphineError},
-    eval::Context,
+    eval::Evaluator,
     tokenizer::{Token, TokenKind},
 };
 
@@ -137,7 +137,7 @@ impl History {
 struct WrappedStdout(RawTerminal<std::io::Stdout>);
 
 struct Repl {
-    ctx: Context,
+    eval: Evaluator,
     stdout: WrappedStdout,
     input: String,
     line: String,
@@ -153,14 +153,14 @@ struct Repl {
 
 impl Repl {
     fn new() -> std::io::Result<Repl> {
-        let ctx = Context::builder()
+        let eval = Evaluator::builder()
             .debug_writer(Some(ReplWriter::with_color(color::LightBlack.fg_str())))
             .build();
 
         let stdout = WrappedStdout(std::io::stdout().into_raw_mode()?);
 
         Ok(Repl {
-            ctx,
+            eval,
             stdout,
             input: String::new(),
             line: String::new(),
@@ -230,7 +230,7 @@ impl Repl {
                     // TODO: Implement this "properly", so that one can use repl functionality
                     // (move the cursor, delete word, ...) when reading from stdin
                     self.stdout.0.suspend_raw_mode()?;
-                    let eval_result = self.ctx.eval_str(&self.input);
+                    let eval_result = self.eval.eval_str(&self.input);
                     self.stdout.0.activate_raw_mode()?;
 
                     match eval_result {

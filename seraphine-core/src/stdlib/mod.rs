@@ -2,7 +2,7 @@ mod functions;
 
 use crate::{
     error::EvalError,
-    eval::{Context, Function, Value},
+    eval::{Evaluator, Function, Value},
 };
 
 pub(crate) fn get_standard_variables() -> Vec<(&'static str, Value)> {
@@ -26,7 +26,7 @@ pub(crate) fn get_standard_functions() -> Vec<(&'static str, Value)> {
         func: F,
     ) -> (&'static str, Value)
     where
-        F: Fn(&mut Context, Option<Value>, Vec<Value>) -> Result<Value, EvalError> + 'static,
+        F: Fn(&mut Evaluator, Option<Value>, Vec<Value>) -> Result<Value, EvalError> + 'static,
     {
         (
             name,

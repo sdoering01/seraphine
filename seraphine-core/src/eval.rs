@@ -193,7 +193,7 @@ impl Value {
         }
     }
 
-    pub(crate) fn call(&self, ctx: &mut Context, args: Vec<Value>) -> Result<Value, EvalError> {
+    pub(crate) fn call(&self, eval: &mut Evaluator, args: Vec<Value>) -> Result<Value, EvalError> {
         match self {
             Value::Function(func) => {
                 let maybe_expected_args = func.get_arg_count();
@@ -207,7 +207,7 @@ impl Value {
                         });
                     }
                 }
-                func.call(ctx, args)
+                func.call(eval, args)
             }
             other => {
                 let error = format!("Cannot call value of type {}", other.get_type());
@@ -739,7 +739,7 @@ impl Function {
         func: F,
     ) -> Self
     where
-        F: Fn(&mut Context, Option<Value>, Vec<Value>) -> Result<Value, EvalError> + 'static,
+        F: Fn(&mut Evaluator, Option<Value>, Vec<Value>) -> Result<Value, EvalError> + 'static,
     {
         Function {
             kind: Rc::new(FunctionKind::Builtin {
@@ -803,15 +803,15 @@ impl Function {
         }
     }
 
-    pub fn call(&self, ctx: &mut Context, args: Vec<Value>) -> Result<Value, EvalError> {
+    pub fn call(&self, eval: &mut Evaluator, args: Vec<Value>) -> Result<Value, EvalError> {
         let receiver = self.receiver.as_ref().map(|r| r.as_ref().to_owned());
 
         match self.kind.as_ref() {
-            FunctionKind::Builtin { func, .. } => func(ctx, receiver, args),
+            FunctionKind::Builtin { func, .. } => func(eval, receiver, args),
             FunctionKind::UserDefinedAst {
                 arg_names, body, ..
             } => {
-                if ctx.call_stack.len() >= CALL_STACK_SIZE_LIMIT - 1 {
+                if eval.call_stack.len() >= CALL_STACK_SIZE_LIMIT - 1 {
                     return Err(EvalError::CallStackOverflow);
                 }
 
@@ -823,12 +823,12 @@ impl Function {
                     scope.set_var(name, value);
                 }
 
-                if let Some(function_scope) = ctx.function_scope.take() {
-                    ctx.call_stack.push(function_scope);
+                if let Some(function_scope) = eval.function_scope.take() {
+                    eval.call_stack.push(function_scope);
                 }
-                ctx.function_scope = Some(scope);
+                eval.function_scope = Some(scope);
 
-                let call_result = match evaluate(body, ctx) {
+                let call_result = match evaluate(body, eval) {
                     Err(EvalError::InternalControlFlow(ControlFlow::Return(val))) => Ok(val),
                     Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => {
                         Err(EvalError::ContinueOutsideOfLoop)
@@ -838,7 +838,7 @@ impl Function {
                     }
                     other => other,
                 };
-                ctx.function_scope = ctx.call_stack.pop();
+                eval.function_scope = eval.call_stack.pop();
                 call_result
             }
             FunctionKind::UserDefinedVm { .. } => {
@@ -876,7 +876,7 @@ impl Function {
 
 // TODO: Replace Context with something that can be shared across AST-based evaluation and the VM
 pub(crate) type BuiltinFunctionClosure =
-    Box<dyn Fn(&mut Context, Option<Value>, Vec<Value>) -> Result<Value, EvalError>>;
+    Box<dyn Fn(&mut Evaluator, Option<Value>, Vec<Value>) -> Result<Value, EvalError>>;
 
 pub enum FunctionKind {
     Builtin {
@@ -935,7 +935,7 @@ impl Scope {
     }
 }
 
-pub struct ContextBuilder {
+pub struct EvaluatorBuilder {
     stdin: Box<dyn Read>,
     stdout: Box<dyn Write>,
     stderr: Box<dyn Write>,
@@ -944,7 +944,7 @@ pub struct ContextBuilder {
     standard_functions: bool,
 }
 
-impl Default for ContextBuilder {
+impl Default for EvaluatorBuilder {
     fn default() -> Self {
         Self {
             stdin: Box::new(stdin()),
@@ -957,9 +957,9 @@ impl Default for ContextBuilder {
     }
 }
 
-impl ContextBuilder {
-    pub fn build(self) -> Context {
-        let mut ctx = Context {
+impl EvaluatorBuilder {
+    pub fn build(self) -> Evaluator {
+        let mut eval = Evaluator {
             global_scope: Scope::new(),
             function_scope: None,
             call_stack: Vec::new(),
@@ -971,13 +971,13 @@ impl ContextBuilder {
         };
 
         if self.standard_variables {
-            ctx.add_standard_variables();
+            eval.add_standard_variables();
         }
         if self.standard_functions {
-            ctx.add_standard_functions();
+            eval.add_standard_functions();
         }
 
-        ctx
+        eval
     }
 
     // TODO: Remove `#[allow(unused)]` once this is used outside of tests
@@ -1025,7 +1025,7 @@ impl ContextBuilder {
     }
 }
 
-pub struct Context {
+pub struct Evaluator {
     global_scope: Scope,
     function_scope: Option<Scope>,
     call_stack: Vec<Scope>,
@@ -1040,19 +1040,19 @@ pub struct Context {
     pub _internal_side_effect_flag: bool,
 }
 
-impl Default for Context {
+impl Default for Evaluator {
     fn default() -> Self {
         Self::builder().build()
     }
 }
 
-impl Context {
+impl Evaluator {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn builder() -> ContextBuilder {
-        ContextBuilder::default()
+    pub fn builder() -> EvaluatorBuilder {
+        EvaluatorBuilder::default()
     }
 
     pub fn eval_str(&mut self, s: &str) -> Result<Value, SeraphineError> {
@@ -1110,7 +1110,7 @@ impl Context {
     }
 }
 
-pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
+pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
     let result = match ast {
         Ast::FunctionDefinition {
             name,
@@ -1122,7 +1122,7 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
                 arg_names.clone(),
                 *body.clone(),
             )?;
-            ctx.set_var(name, Value::Function(func));
+            eval.set_var(name, Value::Function(func));
             NULL_VALUE
         }
         Ast::UnnamedFunction { arg_names, body } => {
@@ -1133,21 +1133,21 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
             value: value_ast,
             member,
         } => {
-            let value = evaluate(value_ast, ctx)?;
+            let value = evaluate(value_ast, eval)?;
             value.get_member(member)?
         }
         Ast::Indexing {
             value: value_ast,
             index: index_ast,
         } => {
-            let value = evaluate(value_ast, ctx)?;
-            let index = evaluate(index_ast, ctx)?;
+            let value = evaluate(value_ast, eval)?;
+            let index = evaluate(index_ast, eval)?;
             value.get_index(index)?
         }
         Ast::Lines(lines) => {
             let mut result = NULL_VALUE;
             for line in lines {
-                result = evaluate(line, ctx)?;
+                result = evaluate(line, eval)?;
             }
             result
         }
@@ -1158,84 +1158,84 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
         Ast::ListLiteral(values) => {
             let values: Vec<_> = values
                 .iter()
-                .map(|ast| evaluate(ast, ctx))
+                .map(|ast| evaluate(ast, eval))
                 .collect::<Result<_, _>>()?;
             Value::List(Rc::new(RefCell::new(values)))
         }
         Ast::ObjectLiteral(key_value_pairs) => {
             let mut object = BTreeMap::new();
             for (key, value) in key_value_pairs {
-                let value = evaluate(value, ctx)?;
+                let value = evaluate(value, eval)?;
                 object.insert(key.clone(), value);
             }
             Value::Object(Rc::new(RefCell::new(object)))
         }
-        Ast::Variable(name) => ctx
+        Ast::Variable(name) => eval
             .get_var(name)
             .ok_or_else(|| EvalError::VariableNotDefined(name.clone()))?,
-        Ast::Add(lhs, rhs) => evaluate(lhs, ctx)?.add(evaluate(rhs, ctx)?)?,
-        Ast::Subtract(lhs, rhs) => evaluate(lhs, ctx)?.subtract(evaluate(rhs, ctx)?)?,
-        Ast::Multiply(lhs, rhs) => evaluate(lhs, ctx)?.multiply(evaluate(rhs, ctx)?)?,
-        Ast::Divide(lhs, rhs) => evaluate(lhs, ctx)?.divide(evaluate(rhs, ctx)?)?,
-        Ast::Modulo(lhs, rhs) => evaluate(lhs, ctx)?.modulo(evaluate(rhs, ctx)?)?,
-        Ast::Power(lhs, rhs) => evaluate(lhs, ctx)?.power(evaluate(rhs, ctx)?)?,
-        Ast::UnaryMinus(rhs) => evaluate(rhs, ctx)?.negate()?,
-        Ast::BooleanNegate(rhs) => evaluate(rhs, ctx)?.bool_negate()?,
-        Ast::Equality(lhs, rhs) => evaluate(lhs, ctx)?.equal(evaluate(rhs, ctx)?)?,
-        Ast::Inequality(lhs, rhs) => evaluate(lhs, ctx)?.unequal(evaluate(rhs, ctx)?)?,
-        Ast::LessThan(lhs, rhs) => evaluate(lhs, ctx)?.less_than(evaluate(rhs, ctx)?)?,
-        Ast::GreaterThan(lhs, rhs) => evaluate(lhs, ctx)?.greater_than(evaluate(rhs, ctx)?)?,
+        Ast::Add(lhs, rhs) => evaluate(lhs, eval)?.add(evaluate(rhs, eval)?)?,
+        Ast::Subtract(lhs, rhs) => evaluate(lhs, eval)?.subtract(evaluate(rhs, eval)?)?,
+        Ast::Multiply(lhs, rhs) => evaluate(lhs, eval)?.multiply(evaluate(rhs, eval)?)?,
+        Ast::Divide(lhs, rhs) => evaluate(lhs, eval)?.divide(evaluate(rhs, eval)?)?,
+        Ast::Modulo(lhs, rhs) => evaluate(lhs, eval)?.modulo(evaluate(rhs, eval)?)?,
+        Ast::Power(lhs, rhs) => evaluate(lhs, eval)?.power(evaluate(rhs, eval)?)?,
+        Ast::UnaryMinus(rhs) => evaluate(rhs, eval)?.negate()?,
+        Ast::BooleanNegate(rhs) => evaluate(rhs, eval)?.bool_negate()?,
+        Ast::Equality(lhs, rhs) => evaluate(lhs, eval)?.equal(evaluate(rhs, eval)?)?,
+        Ast::Inequality(lhs, rhs) => evaluate(lhs, eval)?.unequal(evaluate(rhs, eval)?)?,
+        Ast::LessThan(lhs, rhs) => evaluate(lhs, eval)?.less_than(evaluate(rhs, eval)?)?,
+        Ast::GreaterThan(lhs, rhs) => evaluate(lhs, eval)?.greater_than(evaluate(rhs, eval)?)?,
         Ast::LessThanOrEqual(lhs, rhs) => {
-            evaluate(lhs, ctx)?.less_than_or_equal(evaluate(rhs, ctx)?)?
+            evaluate(lhs, eval)?.less_than_or_equal(evaluate(rhs, eval)?)?
         }
         Ast::GreaterThanOrEqual(lhs, rhs) => {
-            evaluate(lhs, ctx)?.greater_than_or_equal(evaluate(rhs, ctx)?)?
+            evaluate(lhs, eval)?.greater_than_or_equal(evaluate(rhs, eval)?)?
         }
-        Ast::And(lhs, rhs) => evaluate(lhs, ctx)?.and(|| evaluate(rhs, ctx))?,
-        Ast::Or(lhs, rhs) => evaluate(lhs, ctx)?.or(|| evaluate(rhs, ctx))?,
-        Ast::Brackets(inner) => evaluate(inner, ctx)?,
+        Ast::And(lhs, rhs) => evaluate(lhs, eval)?.and(|| evaluate(rhs, eval))?,
+        Ast::Or(lhs, rhs) => evaluate(lhs, eval)?.or(|| evaluate(rhs, eval))?,
+        Ast::Brackets(inner) => evaluate(inner, eval)?,
         Ast::Assign(name, rhs) => {
-            let rval = evaluate(rhs, ctx)?;
-            ctx.set_var(name, rval.clone());
+            let rval = evaluate(rhs, eval)?;
+            eval.set_var(name, rval.clone());
             NULL_VALUE
         }
         Ast::IndexingAssign { value, index, rhs } => {
-            let value = evaluate(value, ctx)?;
-            let index = evaluate(index, ctx)?;
-            let rval = evaluate(rhs, ctx)?;
+            let value = evaluate(value, eval)?;
+            let index = evaluate(index, eval)?;
+            let rval = evaluate(rhs, eval)?;
             value.set_index(index, rval.clone())?;
             NULL_VALUE
         }
         Ast::MemberAssign { value, member, rhs } => {
-            let value = evaluate(value, ctx)?;
-            let rval = evaluate(rhs, ctx)?;
+            let value = evaluate(value, eval)?;
+            let rval = evaluate(rhs, eval)?;
             value.set_member(member, rval.clone())?;
             NULL_VALUE
         }
         Ast::FunctionCall { value, args } => {
-            let val = evaluate(value, ctx)?;
+            let val = evaluate(value, eval)?;
             let args: Vec<_> = args
                 .iter()
-                .map(|ast| evaluate(ast, ctx))
+                .map(|ast| evaluate(ast, eval))
                 .collect::<Result<_, _>>()?;
-            val.call(ctx, args)?
+            val.call(eval, args)?
         }
         Ast::IfStatement {
             condition,
             if_body,
             else_body,
         } => {
-            let condition = evaluate(condition, ctx)?;
+            let condition = evaluate(condition, eval)?;
             if condition.as_bool() {
-                evaluate(if_body, ctx)?;
+                evaluate(if_body, eval)?;
             } else if let Some(else_body) = else_body {
-                evaluate(else_body, ctx)?;
+                evaluate(else_body, eval)?;
             }
             NULL_VALUE
         }
         Ast::WhileLoop { condition, body } => {
-            while evaluate(condition, ctx)?.as_bool() {
-                match evaluate(body, ctx) {
+            while evaluate(condition, eval)?.as_bool() {
+                match evaluate(body, eval) {
                     Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => continue,
                     Err(EvalError::InternalControlFlow(ControlFlow::Break)) => break,
                     e @ Err(_) => return e,
@@ -1249,10 +1249,10 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
             iterable,
             body,
         } => {
-            let iterable = evaluate(iterable, ctx)?;
+            let iterable = evaluate(iterable, eval)?;
             for value in iterable.make_iterator()?.borrow_mut().into_iter() {
-                ctx.set_var(variable, value);
-                match evaluate(body, ctx) {
+                eval.set_var(variable, value);
+                match evaluate(body, eval) {
                     Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => continue,
                     Err(EvalError::InternalControlFlow(ControlFlow::Break)) => break,
                     e @ Err(_) => return e,
@@ -1270,7 +1270,7 @@ pub fn evaluate(ast: &Ast, ctx: &mut Context) -> Result<Value, EvalError> {
         Ast::Return(expr) => {
             let val = match expr {
                 None => NULL_VALUE,
-                Some(expr) => evaluate(expr, ctx)?,
+                Some(expr) => evaluate(expr, eval)?,
             };
             return Err(EvalError::InternalControlFlow(ControlFlow::Return(val)));
         }

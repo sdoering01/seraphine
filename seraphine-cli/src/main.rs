@@ -2,14 +2,14 @@ use std::process;
 
 use termion::color;
 
-use seraphine_core::{error::SeraphineError, eval::Context};
+use seraphine_core::{error::SeraphineError, eval::Evaluator};
 
 mod repl;
 
 fn eval_file(path: &str) -> Result<(), SeraphineError> {
-    let mut ctx = Context::new();
+    let mut eval = Evaluator::new();
     let contents = std::fs::read_to_string(path)?;
-    if let Err(e) = ctx.eval_str(&contents) {
+    if let Err(e) = eval.eval_str(&contents) {
         eprintln!(
             "{}{}{}",
             color::Fg(color::Red),
