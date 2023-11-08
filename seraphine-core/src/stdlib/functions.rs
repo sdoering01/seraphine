@@ -2,11 +2,12 @@ use std::{cell::RefCell, io::BufRead, rc::Rc};
 
 use crate::{
     error::EvalError,
-    eval::{print_values, Evaluator, SeraphineIterator, Type, Value, NULL_VALUE},
+    eval::{print_values, SeraphineIterator, Type, Value, NULL_VALUE},
+    runtime::common::RuntimeContext,
 };
 
 pub(super) fn _set_internal_side_effect_flag(
-    ctx: &mut Evaluator,
+    ctx: &mut RuntimeContext,
     _this: Option<Value>,
     _args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -15,7 +16,7 @@ pub(super) fn _set_internal_side_effect_flag(
 }
 
 pub(super) fn print(
-    ctx: &mut Evaluator,
+    ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -25,7 +26,7 @@ pub(super) fn print(
 }
 
 pub(super) fn println(
-    ctx: &mut Evaluator,
+    ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -35,7 +36,7 @@ pub(super) fn println(
 }
 
 pub(super) fn eprint(
-    ctx: &mut Evaluator,
+    ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -45,7 +46,7 @@ pub(super) fn eprint(
 }
 
 pub(super) fn eprintln(
-    ctx: &mut Evaluator,
+    ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -55,7 +56,7 @@ pub(super) fn eprintln(
 }
 
 pub(super) fn read_line(
-    ctx: &mut Evaluator,
+    ctx: &mut RuntimeContext,
     _this: Option<Value>,
     _args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -66,7 +67,7 @@ pub(super) fn read_line(
 }
 
 pub(super) fn to_string(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -74,7 +75,7 @@ pub(super) fn to_string(
 }
 
 pub(super) fn parse_number(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -87,7 +88,7 @@ pub(super) fn parse_number(
 }
 
 pub(super) fn range(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -183,7 +184,7 @@ pub(super) fn range(
 }
 
 pub(super) fn is_nan(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -195,7 +196,7 @@ pub(super) fn is_nan(
 }
 
 pub(super) fn is_infinite(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -207,7 +208,7 @@ pub(super) fn is_infinite(
 }
 
 pub(super) fn is_finite(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -219,7 +220,7 @@ pub(super) fn is_finite(
 }
 
 pub(super) fn sin(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -231,7 +232,7 @@ pub(super) fn sin(
 }
 
 pub(super) fn cos(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -243,7 +244,7 @@ pub(super) fn cos(
 }
 
 pub(super) fn tan(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -255,7 +256,7 @@ pub(super) fn tan(
 }
 
 pub(super) fn asin(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -267,7 +268,7 @@ pub(super) fn asin(
 }
 
 pub(super) fn acos(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -279,7 +280,7 @@ pub(super) fn acos(
 }
 
 pub(super) fn atan(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -291,7 +292,7 @@ pub(super) fn atan(
 }
 
 pub(super) fn atan2(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -307,7 +308,7 @@ pub(super) fn atan2(
 }
 
 pub(super) fn tanh(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -319,7 +320,7 @@ pub(super) fn tanh(
 }
 
 pub(super) fn sinh(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -331,7 +332,7 @@ pub(super) fn sinh(
 }
 
 pub(super) fn cosh(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -343,7 +344,7 @@ pub(super) fn cosh(
 }
 
 pub(super) fn ln(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -355,7 +356,7 @@ pub(super) fn ln(
 }
 
 pub(super) fn log2(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -367,7 +368,7 @@ pub(super) fn log2(
 }
 
 pub(super) fn log10(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -379,7 +380,7 @@ pub(super) fn log10(
 }
 
 pub(super) fn log(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -395,7 +396,7 @@ pub(super) fn log(
 }
 
 pub(super) fn abs(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -407,7 +408,7 @@ pub(super) fn abs(
 }
 
 pub(super) fn min(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -423,7 +424,7 @@ pub(super) fn min(
 }
 
 pub(super) fn max(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -439,7 +440,7 @@ pub(super) fn max(
 }
 
 pub(super) fn floor(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -451,7 +452,7 @@ pub(super) fn floor(
 }
 
 pub(super) fn ceil(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -463,7 +464,7 @@ pub(super) fn ceil(
 }
 
 pub(super) fn round(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -475,7 +476,7 @@ pub(super) fn round(
 }
 
 pub(super) fn sqrt(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -487,7 +488,7 @@ pub(super) fn sqrt(
 }
 
 pub(super) fn exp(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
@@ -499,7 +500,7 @@ pub(super) fn exp(
 }
 
 pub(super) fn inspect(
-    _ctx: &mut Evaluator,
+    _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {

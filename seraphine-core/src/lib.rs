@@ -3,6 +3,7 @@ pub mod error;
 pub mod eval;
 pub mod io;
 pub mod parser;
+pub mod runtime;
 pub mod stdlib;
 pub mod tokenizer;
 pub mod vm;
@@ -530,7 +531,7 @@ mod tests {
             false && set_a()
         ";
         eval_str_with(code, &mut eval).unwrap();
-        assert!(!eval._internal_side_effect_flag);
+        assert!(!eval.ctx._internal_side_effect_flag);
 
         let mut eval = Evaluator::new();
         let code = "\
@@ -541,7 +542,7 @@ mod tests {
             true && set_a()
         ";
         eval_str_with(code, &mut eval).unwrap();
-        assert!(eval._internal_side_effect_flag);
+        assert!(eval.ctx._internal_side_effect_flag);
     }
 
     #[test]
@@ -571,7 +572,7 @@ mod tests {
             false || set_a()
         ";
         eval_str_with(code, &mut eval).unwrap();
-        assert!(eval._internal_side_effect_flag);
+        assert!(eval.ctx._internal_side_effect_flag);
 
         let mut eval = Evaluator::new();
         let code = "\
@@ -582,7 +583,7 @@ mod tests {
             true || set_a()
         ";
         eval_str_with(code, &mut eval).unwrap();
-        assert!(!eval._internal_side_effect_flag);
+        assert!(!eval.ctx._internal_side_effect_flag);
     }
 
     #[test]

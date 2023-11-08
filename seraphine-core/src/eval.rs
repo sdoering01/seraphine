@@ -11,6 +11,7 @@ use crate::{
     parser::{parse, Ast},
     stdlib::{get_standard_functions, get_standard_variables},
     tokenizer::tokenize,
+    runtime::common::RuntimeContext,
     vm::Scope as VmScope,
 };
 
@@ -739,7 +740,7 @@ impl Function {
         func: F,
     ) -> Self
     where
-        F: Fn(&mut Evaluator, Option<Value>, Vec<Value>) -> Result<Value, EvalError> + 'static,
+        F: Fn(&mut RuntimeContext, Option<Value>, Vec<Value>) -> Result<Value, EvalError> + 'static,
     {
         Function {
             kind: Rc::new(FunctionKind::Builtin {
@@ -807,7 +808,7 @@ impl Function {
         let receiver = self.receiver.as_ref().map(|r| r.as_ref().to_owned());
 
         match self.kind.as_ref() {
-            FunctionKind::Builtin { func, .. } => func(eval, receiver, args),
+            FunctionKind::Builtin { func, .. } => func(&mut eval.ctx, receiver, args),
             FunctionKind::UserDefinedAst {
                 arg_names, body, ..
             } => {
@@ -876,7 +877,7 @@ impl Function {
 
 // TODO: Replace Context with something that can be shared across AST-based evaluation and the VM
 pub(crate) type BuiltinFunctionClosure =
-    Box<dyn Fn(&mut Evaluator, Option<Value>, Vec<Value>) -> Result<Value, EvalError>>;
+    Box<dyn Fn(&mut RuntimeContext, Option<Value>, Vec<Value>) -> Result<Value, EvalError>>;
 
 pub enum FunctionKind {
     Builtin {
@@ -963,11 +964,12 @@ impl EvaluatorBuilder {
             global_scope: Scope::new(),
             function_scope: None,
             call_stack: Vec::new(),
-            stdin: BufReader::new(self.stdin),
-            stdout: self.stdout,
-            stderr: self.stderr,
-            debug_writer: self.debug_writer,
-            _internal_side_effect_flag: false,
+            ctx: RuntimeContext::new(
+                BufReader::new(self.stdin),
+                self.stdout,
+                self.stderr,
+                self.debug_writer,
+            ),
         };
 
         if self.standard_variables {
@@ -1029,15 +1031,7 @@ pub struct Evaluator {
     global_scope: Scope,
     function_scope: Option<Scope>,
     call_stack: Vec<Scope>,
-    pub(crate) stdin: BufReader<Box<dyn Read>>,
-    pub(crate) stdout: Box<dyn Write>,
-    pub(crate) stderr: Box<dyn Write>,
-    #[allow(dead_code)]
-    pub(crate) debug_writer: Option<Box<dyn Write>>,
-    /// This flag is used during tests until observable side effects apart from writing to stdout
-    /// are introduced.
-    // TODO: Remove this when some form of obvservable side effects is implemented
-    pub _internal_side_effect_flag: bool,
+    pub(crate) ctx: RuntimeContext,
 }
 
 impl Default for Evaluator {
@@ -1060,7 +1054,7 @@ impl Evaluator {
 
         #[cfg(debug_assertions)]
         if !cfg!(test) {
-            if let Some(debug_writer) = &mut self.debug_writer {
+            if let Some(debug_writer) = &mut self.ctx.debug_writer {
                 writeln!(debug_writer, "Tokens: {:?}", tokens)?;
             }
         } else {
@@ -1071,7 +1065,7 @@ impl Evaluator {
 
         #[cfg(debug_assertions)]
         if !cfg!(test) {
-            if let Some(debug_writer) = &mut self.debug_writer {
+            if let Some(debug_writer) = &mut self.ctx.debug_writer {
                 writeln!(debug_writer, "AST: {:#?}", ast)?;
             }
         } else {
