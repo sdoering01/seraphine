@@ -3,6 +3,7 @@ pub mod error;
 pub mod eval;
 pub mod io;
 pub mod parser;
+pub mod stdlib;
 pub mod tokenizer;
 pub mod vm;
 
@@ -15,7 +16,7 @@ mod tests {
 
     use crate::{
         error::SeraphineError,
-        eval::{Context, Value},
+        eval::{Context, Function, Value},
         io,
         macros::{
             assert_eq_bool, assert_eq_num, assert_eq_num_list, assert_eq_num_object, assert_eq_str,
@@ -204,7 +205,7 @@ mod tests {
     #[test]
     fn test_functions() {
         let mut ctx = Context::new();
-        ctx.add_builtin_function("add", Some(2), |_ctx, _this, args| {
+        let func = Function::new_builtin("add", None, Some(2), |_ctx, _this, args| {
             let Value::Number(arg1) = args[0] else {
                 unreachable!()
             };
@@ -213,6 +214,7 @@ mod tests {
             };
             Ok(Value::Number(arg1 + arg2))
         });
+        ctx.set_var("add", Value::Function(func));
 
         assert!(eval_str_ctx("add()", &mut ctx).is_err());
         assert!(eval_str_ctx("add(1)", &mut ctx).is_err());
