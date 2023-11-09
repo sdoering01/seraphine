@@ -124,7 +124,9 @@ impl From<VariableLookupTable> for Vec<String> {
 
 impl From<Vec<String>> for VariableLookupTable {
     fn from(value: Vec<String>) -> Self {
-        VariableLookupTable { variable_names: value }
+        VariableLookupTable {
+            variable_names: value,
+        }
     }
 }
 

@@ -9,9 +9,9 @@ use std::{
 use crate::{
     error::{EvalError, SeraphineError},
     parser::{parse, Ast},
+    runtime::common::RuntimeContext,
     stdlib::{get_standard_functions, get_standard_variables},
     tokenizer::tokenize,
-    runtime::common::RuntimeContext,
     vm::Scope as VmScope,
 };
 
