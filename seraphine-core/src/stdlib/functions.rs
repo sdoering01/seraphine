@@ -31,7 +31,7 @@ pub(super) fn println(
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     print_values(&mut ctx.stdout, &args)?;
-    writeln!(ctx.stdout, "")?;
+    writeln!(ctx.stdout)?;
     Ok(NULL_VALUE)
 }
 
@@ -51,7 +51,7 @@ pub(super) fn eprintln(
     args: Vec<Value>,
 ) -> Result<Value, EvalError> {
     print_values(&mut ctx.stderr, &args)?;
-    writeln!(ctx.stderr, "")?;
+    writeln!(ctx.stderr)?;
     Ok(NULL_VALUE)
 }
 

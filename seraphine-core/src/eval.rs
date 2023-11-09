@@ -820,7 +820,7 @@ impl Function {
                 if let Some(recv) = receiver {
                     scope.set_var("this", recv);
                 }
-                for (name, value) in arg_names.iter().zip(args.into_iter()) {
+                for (name, value) in arg_names.iter().zip(args) {
                     scope.set_var(name, value);
                 }
 
@@ -842,11 +842,9 @@ impl Function {
                 eval.function_scope = eval.call_stack.pop();
                 call_result
             }
-            FunctionKind::UserDefinedVm { .. } => {
-                return Err(EvalError::GenericError(
-                    "got user defined vm function in AST walking mode".to_string(),
-                ));
-            }
+            FunctionKind::UserDefinedVm { .. } => Err(EvalError::GenericError(
+                "got user defined vm function in AST walking mode".to_string(),
+            )),
         }
     }
 

@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-const HELP_TEXT: &'static str = "\
+const HELP_TEXT: &str = "\
 Seraphine CLI
 
 Usage:
@@ -62,7 +62,7 @@ impl OptionParser {
     ) -> Result<OptionParseAction, OptionParseError> {
         let mut args_iter = args.into_iter();
         while let Some(arg) = args_iter.next() {
-            if arg.starts_with("-") {
+            if arg.starts_with('-') {
                 match arg.as_str() {
                     "--vm" => {
                         self.runtime = Runtime::Vm;

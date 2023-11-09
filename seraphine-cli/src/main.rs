@@ -13,7 +13,7 @@ mod option_parser;
 mod repl;
 
 fn run_with_vm(code: &str) -> Result<(), SeraphineError> {
-    let tokens = tokenize(&code)?;
+    let tokens = tokenize(code)?;
     let ast = parse(&tokens)?;
     let bytecode = generate(&ast);
     let mut vm = Vm::new(bytecode);
@@ -24,9 +24,9 @@ fn eval_code(code: &str, runtime: Runtime) -> Result<(), SeraphineError> {
     match runtime {
         Runtime::Evaluator => {
             let mut eval = Evaluator::new();
-            eval.eval_str(&code).map(|_| ())
+            eval.eval_str(code).map(|_| ())
         }
-        Runtime::Vm => run_with_vm(&code),
+        Runtime::Vm => run_with_vm(code),
     }
 }
 

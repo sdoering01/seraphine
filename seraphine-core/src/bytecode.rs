@@ -164,6 +164,12 @@ pub struct CodeGenerator {
     current_instruction_context: InstructionContext,
 }
 
+impl Default for CodeGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CodeGenerator {
     pub fn new() -> CodeGenerator {
         CodeGenerator {
@@ -224,6 +230,7 @@ impl CodeGenerator {
 
         // replace internal function definition placeholders
         for instruction in &mut instructions {
+            #[allow(clippy::single_match)]
             match instruction {
                 Instruction::InternalPlaceholder(PlaceholderInstructions::PushFunction {
                     function_idx,
@@ -348,12 +355,12 @@ impl CodeGenerator {
                 self.push_instruction(Instruction::MakeObject { n_keys });
             }
             Ast::Variable(name) => {
-                let idx = self.variable_names.lookup_or_insert(&name);
+                let idx = self.variable_names.lookup_or_insert(name);
                 self.push_instruction(Instruction::LoadVariable(idx));
             }
             Ast::Assign(name, value) => {
                 self.generate(value);
-                let idx = self.variable_names.lookup_or_insert(&name);
+                let idx = self.variable_names.lookup_or_insert(name);
                 self.push_instruction(Instruction::StoreVariable(idx));
             }
             Ast::Indexing { value, index } => {

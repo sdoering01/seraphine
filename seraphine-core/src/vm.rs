@@ -137,9 +137,8 @@ impl Vm {
         let mut standard_values = get_standard_variables();
         standard_values.append(&mut get_standard_functions());
         for (name, val) in standard_values {
-            match variable_names.lookup(name) {
-                Some(idx) => global_scope.set(idx, val),
-                None => {}
+            if let Some(idx) = variable_names.lookup(name) {
+                global_scope.set(idx, val);
             }
         }
 
@@ -373,7 +372,7 @@ impl Vm {
                             parent_scope,
                             ..
                         } => {
-                            let mut scope = Scope::with_parent(&parent_scope);
+                            let mut scope = Scope::with_parent(parent_scope);
                             if let Some(receiver) = func.receiver {
                                 scope.set(self.this_idx, receiver.as_ref().clone());
                             }
