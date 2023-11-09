@@ -20,6 +20,8 @@ use seraphine_core::{
     tokenizer::{Token, TokenKind},
 };
 
+use crate::option_parser::Runtime;
+
 static mut DEBUG_FILE: OnceCell<File> = OnceCell::new();
 
 macro_rules! debug {
@@ -497,6 +499,12 @@ fn write_newline(mut stdout: impl Write) -> std::io::Result<()> {
     write!(stdout, "\n{}", termion::cursor::Left(65535))
 }
 
-pub fn repl() -> std::io::Result<()> {
-    Repl::new()?.start()
+pub(crate) fn repl(runtime: Runtime) -> std::io::Result<()> {
+    match runtime {
+        Runtime::Evaluator => Repl::new()?.start(),
+        Runtime::Vm => {
+            eprintln!("The VM runtime does not support the REPL");
+            std::process::exit(1);
+        }
+    }
 }
