@@ -59,7 +59,7 @@ impl Stack {
     }
 
     fn trim(&mut self, new_len: usize) -> Result<(), VmError> {
-        if new_len < self.stack.len() {
+        if self.stack.len() < new_len {
             return Err(VmError::StackUnderflow);
         }
 
@@ -113,6 +113,7 @@ struct CallStackItem {
     prev_stack: Stack,
     prev_scope: Scope,
     continue_at_instruction: usize,
+    stack_save_slots: Vec<usize>,
 }
 
 pub struct Vm {
@@ -175,7 +176,6 @@ impl Vm {
     pub fn run(&mut self) -> Result<(), VmError> {
         while self.instruction_pointer < self.bytecode.instructions.len() {
             let instruction = &self.bytecode.instructions[self.instruction_pointer];
-            // println!("Instruction at index {}: {:?}", self.instruction_pointer, instruction);
             match instruction {
                 Instruction::InternalPlaceholder(_) => {
                     panic!("corrupt bytecode -- internal placeholder instruction found")
@@ -384,10 +384,14 @@ impl Vm {
                             let mut stack = Stack::from(args);
                             std::mem::swap(&mut stack, &mut self.stack);
 
+                            let mut stack_save_slots = vec![0; self.bytecode.stack_save_slots];
+                            std::mem::swap(&mut stack_save_slots, &mut self.stack_save_slots);
+
                             self.call_stack.push(CallStackItem {
                                 prev_stack: stack,
                                 prev_scope: scope,
                                 continue_at_instruction: self.instruction_pointer + 1,
+                                stack_save_slots,
                             });
 
                             self.instruction_pointer = *entrypoint;
@@ -406,6 +410,10 @@ impl Vm {
 
                     std::mem::swap(&mut previous_state.prev_stack, &mut self.stack);
                     std::mem::swap(&mut previous_state.prev_scope, &mut self.scope);
+                    std::mem::swap(
+                        &mut previous_state.stack_save_slots,
+                        &mut self.stack_save_slots,
+                    );
                     self.stack.push(value);
                     self.instruction_pointer = previous_state.continue_at_instruction;
                     continue;
