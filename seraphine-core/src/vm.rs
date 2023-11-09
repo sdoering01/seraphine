@@ -130,19 +130,17 @@ pub struct Vm {
 
 impl Vm {
     pub fn new(bytecode: Bytecode) -> Vm {
-        let mut variable_names = VariableLookupTable::from(bytecode.variable_names.clone());
+        let variable_names = VariableLookupTable::from(bytecode.variable_names.clone());
+
+        let global_scope = Scope::with_len(variable_names.len());
 
         let mut standard_values = get_standard_variables();
         standard_values.append(&mut get_standard_functions());
-        for (name, _val) in &standard_values {
-            variable_names.lookup_or_insert(name);
-        }
-
-        let global_scope = Scope::with_len(variable_names.len());
         for (name, val) in standard_values {
-            // Safety: Value name was inserted already, so the lookup can't fail
-            let idx = variable_names.lookup(name).unwrap();
-            global_scope.set(idx, val);
+            match variable_names.lookup(name) {
+                Some(idx) => global_scope.set(idx, val),
+                None => {}
+            }
         }
 
         let Some(this_idx) = variable_names.lookup("this") else {
