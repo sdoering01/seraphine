@@ -31,21 +31,17 @@ fn solve_field(field) {
         if (solve_field_recursive(field, [0, 0], num)) {
             return true
         }
-
-        num = num + 1
     }
 
     return false
 }
 
 fn advance_pos(pos) {
-    pos = [pos[0], pos[1]]
-    pos[1] = pos[1] + 1
-    if (pos[1] >= 9) {
-        pos[1] = 0
-        pos[0] = pos[0] + 1
+    if (pos[1] == 8) {
+        return [pos[0] + 1, 0]
+    } else {
+        return [pos[0], pos[1] + 1]
     }
-    pos
 }
 
 fn solve_field_recursive(field, pos, num) {
