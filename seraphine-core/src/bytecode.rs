@@ -34,6 +34,7 @@ pub enum PlaceholderInstructions {
         param_count: usize,
         name_idx: Option<usize>,
     },
+    Break,
 }
 
 #[derive(Debug, Clone)]
@@ -162,6 +163,7 @@ pub struct CodeGenerator {
     stack_save_slots: usize,
 
     current_instruction_context: InstructionContext,
+    current_loop_continue_idx: Option<usize>,
 }
 
 impl Default for CodeGenerator {
@@ -178,6 +180,7 @@ impl CodeGenerator {
             variable_names: VariableLookupTable::default(),
             stack_save_slots: 0,
             current_instruction_context: InstructionContext::Script,
+            current_loop_continue_idx: None,
         }
     }
 
@@ -450,11 +453,17 @@ impl CodeGenerator {
                 self.generate(condition);
                 self.push_instruction(PLACEHOLDER_INSTRUCTION);
                 let jump_after_loop_instruction = self.current_instructions().len() - 1;
-                self.generate(body);
+
+                let body_start_idx = self.current_instructions().len();
+                self.with_loop_continue_idx(Some(condition_start_idx), |self_| {
+                    self_.generate(body)
+                });
+
                 self.push_instruction(Instruction::Jump(condition_start_idx));
                 let after_loop_idx = self.current_instructions().len();
                 self.current_instructions_mut()[jump_after_loop_instruction] =
                     Instruction::JumpIfFalse(after_loop_idx);
+                self.replace_break_instructions(body_start_idx, after_loop_idx, after_loop_idx);
             }
             Ast::ForLoop {
                 variable,
@@ -472,14 +481,29 @@ impl CodeGenerator {
                 let advance_iterator_instruction = self.current_instructions().len() - 1;
                 let variable_idx = self.variable_names.lookup_or_insert(variable);
                 self.push_instruction(Instruction::StoreVariable(variable_idx));
-                self.generate(body);
+
+                self.with_loop_continue_idx(Some(loop_start_idx), |self_| self_.generate(body));
+
                 self.push_instruction(Instruction::Jump(loop_start_idx));
                 let after_loop_idx = self.current_instructions().len();
                 self.current_instructions_mut()[advance_iterator_instruction] =
                     Instruction::AdvanceIteratorJumpIfDrained(after_loop_idx);
+                self.replace_break_instructions(loop_start_idx, after_loop_idx, after_loop_idx);
             }
-            Ast::Continue => todo!(),
-            Ast::Break => todo!(),
+            Ast::Continue => match self.current_loop_continue_idx {
+                Some(idx) => self.push_instruction(Instruction::Jump(idx)),
+                // TODO: Replace with Result
+                None => panic!("continue used outside of loop"),
+            },
+            Ast::Break => {
+                match self.current_loop_continue_idx {
+                    Some(_) => self.push_instruction(Instruction::InternalPlaceholder(
+                        PlaceholderInstructions::Break,
+                    )),
+                    // TODO: Replace with Result
+                    None => panic!("break used outside of loop"),
+                }
+            }
         };
     }
 
@@ -543,7 +567,7 @@ impl CodeGenerator {
             self.push_instruction(instruction);
         }
 
-        self.generate(body);
+        self.with_loop_continue_idx(None, |self_| self_.generate(body));
 
         let Ast::Lines(lines) = body else {
             panic!("tried generating function for AST that doesn't represent a block");
@@ -573,6 +597,30 @@ impl CodeGenerator {
         let new_slot_idx = self.stack_save_slots;
         self.stack_save_slots += 1;
         new_slot_idx
+    }
+
+    fn with_loop_continue_idx(
+        &mut self,
+        loop_continue_idx: Option<usize>,
+        func: impl FnOnce(&mut CodeGenerator),
+    ) {
+        let prev_loop_continue_idx = self.current_loop_continue_idx;
+        self.current_loop_continue_idx = loop_continue_idx;
+        func(self);
+        self.current_loop_continue_idx = prev_loop_continue_idx;
+    }
+
+    fn replace_break_instructions(
+        &mut self,
+        start_idx: usize,
+        end_idx: usize,
+        jump_destination: usize,
+    ) {
+        for instruction in &mut self.current_instructions_mut()[start_idx..end_idx] {
+            if let Instruction::InternalPlaceholder(PlaceholderInstructions::Break) = instruction {
+                *instruction = Instruction::Jump(jump_destination);
+            }
+        }
     }
 }
 

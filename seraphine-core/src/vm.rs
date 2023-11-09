@@ -762,4 +762,250 @@ mod tests {
         ";
         assert_eq_str!(run_str(code).unwrap(), "Hello, world!");
     }
+
+    #[test]
+    fn test_continue() {
+        use std::panic::catch_unwind;
+
+        let code = "\
+            continue
+        ";
+        assert!(catch_unwind(|| run_str(code)).is_err());
+
+        let code = "\
+            fn continue_func() {
+                continue
+            }
+
+            for (i in range(3)) {
+                continue_func()
+            }
+        ";
+        assert!(catch_unwind(|| run_str(code)).is_err());
+
+        let code = "\
+            a = 0
+            for (i in range(10)) {
+                if (i % 2 == 0) {
+                    continue
+                }
+                a = a + 1
+            }
+            a
+        ";
+        assert_eq_num!(run_str(code).unwrap(), 5.0);
+
+        let code = "\
+            a = 0
+            i = 0
+            while (i < 10) {
+                i = i + 1
+                if (i % 2 == 0) {
+                    continue
+                }
+                a = a + 1
+            }
+            a
+        ";
+        assert_eq_num!(run_str(code).unwrap(), 5.0);
+
+        let code = "\
+            a = 0
+            for (i in range(10)) {
+                if (i % 2 == 0) {
+                    continue
+                }
+
+                for (j in range(20)) {
+                    if (j % 2 == 0) {
+                        continue
+                    }
+
+                    for (k in range(50)) {
+                        if (k % 2 == 0) {
+                            continue
+                        }
+
+                        a = a + 1
+                    }
+                }
+            }
+            a
+        ";
+        assert_eq_num!(run_str(code).unwrap(), 1250.0);
+
+        let code = "\
+            a = 0
+            i = 0
+            while (i < 10) {
+                i = i + 1
+                if (i % 2 == 0) {
+                    continue
+                }
+
+                j = 0
+                while (j < 20) {
+                    j = j + 1
+                    if (j % 2 == 0) {
+                        continue
+                    }
+
+                    k = 0
+                    while (k < 50) {
+                        k = k + 1
+                        if (k % 2 == 0) {
+                            continue
+                        }
+
+                        a = a + 1
+                    }
+                }
+            }
+            a
+        ";
+        assert_eq_num!(run_str(code).unwrap(), 1250.0);
+
+        let code = "\
+            fn recur(x) {
+                if (x <= 1) {
+                    return 1
+                }
+
+                ret = 0
+                for (i in range(x)) {
+                    if (i % 2 == 0) {
+                        continue
+                    }
+                    ret = ret + recur(i)
+                }
+                ret
+            }
+
+            recur(10)
+        ";
+        assert_eq_num!(run_str(code).unwrap(), 16.0);
+    }
+
+    #[test]
+    fn test_break() {
+        use std::panic::catch_unwind;
+
+        let code = "\
+            break
+        ";
+        assert!(catch_unwind(|| run_str(code)).is_err());
+
+        let code = "\
+            fn break_func() {
+                break
+            }
+
+            for (i in range(3)) {
+                break_func()
+            }
+        ";
+        assert!(catch_unwind(|| run_str(code)).is_err());
+
+        let code = "\
+            a = 0
+            for (i in range(10)) {
+                if (i == 5) {
+                    break
+                }
+                a = a + 1
+            }
+            a
+        ";
+        assert_eq_num!(run_str(code).unwrap(), 5.0);
+
+        let code = "\
+            a = 0
+            i = 0
+            while (i < 10) {
+                if (i == 5) {
+                    break
+                }
+                a = a + 1
+                i = i + 1
+            }
+            a
+        ";
+        assert_eq_num!(run_str(code).unwrap(), 5.0);
+
+        let code = "\
+            a = 0
+            for (i in range(10)) {
+                if (i == 5) {
+                    break
+                }
+
+                for (j in range(20)) {
+                    if (j == 10) {
+                        break
+                    }
+
+                    for (k in range(50)) {
+                        if (k == 25) {
+                            break
+                        }
+
+                        a = a + 1
+                    }
+                }
+            }
+            a
+        ";
+        assert_eq_num!(run_str(code).unwrap(), 1250.0);
+
+        let code = "\
+            a = 0
+            i = 0
+            while (i < 10) {
+                if (i == 5) {
+                    break
+                }
+                i = i + 1
+
+                j = 0
+                while (j < 20) {
+                    if (j == 10) {
+                        break
+                    }
+                    j = j + 1
+
+                    k = 0
+                    while (k < 50) {
+                        if (k == 25) {
+                            break
+                        }
+                        k = k + 1
+
+                        a = a + 1
+                    }
+                }
+            }
+            a
+        ";
+        assert_eq_num!(run_str(code).unwrap(), 1250.0);
+
+        let code = "\
+            fn recur(x) {
+                if (x <= 1) {
+                    return 1
+                }
+
+                ret = 0
+                for (i in range(x)) {
+                    if (i > x / 2) {
+                        break
+                    }
+                    ret = ret + recur(i)
+                }
+                ret
+            }
+
+            recur(10)
+        ";
+        assert_eq_num!(run_str(code).unwrap(), 14.0);
+    }
 }
