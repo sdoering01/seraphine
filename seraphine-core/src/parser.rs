@@ -277,11 +277,11 @@ impl<'a> Parser<'a> {
         let mut lhs = self.parse_expression_with_min_precedence(0)?;
         while let Some(Token {
             kind: TokenKind::Operator(op),
-            pos,
+            span,
         }) = self.peek_next_non_newline()
         {
             let op = *op;
-            let pos = *pos;
+            let pos = span.start;
             self.skip_newlines();
             self.next();
             self.skip_newlines();
@@ -326,7 +326,7 @@ impl<'a> Parser<'a> {
             Some(token) => {
                 match token.kind {
                     TokenKind::Operator(Operator::Minus) => {
-                        let pos = token.pos;
+                        let pos = token.span.start;
                         self.next();
                         self.skip_newlines();
                         let unary_minus_precedence = op_precedence(Operator::Minus, false, pos)?;
@@ -337,7 +337,7 @@ impl<'a> Parser<'a> {
                         Ok(Ast::UnaryMinus(Box::new(rhs)))
                     }
                     TokenKind::Operator(Operator::Exclamation) => {
-                        let pos = token.pos;
+                        let pos = token.span.start;
                         self.next();
                         self.skip_newlines();
                         let boolean_negate_precedence =
@@ -360,11 +360,11 @@ impl<'a> Parser<'a> {
                         let mut lhs = self.parse_identifier_or_value()?;
                         while let Some(Token {
                             kind: TokenKind::Operator(op),
-                            pos,
+                            span,
                         }) = self.peek_next_non_newline()
                         {
                             let op = *op;
-                            let precedence = op_precedence(op, true, *pos)?;
+                            let precedence = op_precedence(op, true, span.start)?;
                             if precedence >= min_precedence {
                                 self.skip_newlines();
                                 self.next();
@@ -792,7 +792,7 @@ impl<'a> Parser<'a> {
                 kind: TokenKind::Identifier(ref name),
                 ..
             }) => Ok(name),
-            Some(Token { pos, .. }) => Err(ParseError::ExpectedIdentifier { pos: *pos }),
+            Some(Token { span, .. }) => Err(ParseError::ExpectedIdentifier { pos: span.start }),
             None => Err(ParseError::NoTokensLeft),
         }
     }
