@@ -1893,4 +1893,18 @@ mod tests {
         assert!(eval_range_to_list("range(1, 2, 0)").is_err());
         assert!(eval_range_to_list("range(1, 2, 3, 4)").is_err());
     }
+
+    #[test]
+    fn test_closures() {
+        let code = "\
+        fn getter_factory() {
+            a = 42
+            fn () { a }
+        }
+
+        getter = getter_factory()
+        getter()
+        ";
+        assert_eq_num!(eval_str(code).unwrap(), 42.0);
+    }
 }

@@ -49,7 +49,7 @@ while (counter.count < 45) {
 }
 println("Counter at", counter.count)
 
-// Anonymous functions (closures are currently not possible)
+// Anonymous functions (closures are possible)
 counter.for_each_count(fn (count) {
     println("Counter was", count)
 })

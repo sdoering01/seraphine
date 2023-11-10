@@ -756,6 +756,7 @@ impl Function {
         func_name: Option<&str>,
         arg_names: Vec<String>,
         body: Ast,
+        parent_scope: Scope,
     ) -> Result<Self, EvalError> {
         let func_name = func_name.map(|name| name.to_string());
 
@@ -774,6 +775,7 @@ impl Function {
                 name: func_name,
                 arg_names,
                 body,
+                parent_scope,
             }),
             receiver: None,
         })
@@ -810,13 +812,16 @@ impl Function {
         match self.kind.as_ref() {
             FunctionKind::Builtin { func, .. } => func(&mut eval.ctx, receiver, args),
             FunctionKind::UserDefinedAst {
-                arg_names, body, ..
+                arg_names,
+                body,
+                parent_scope,
+                ..
             } => {
-                if eval.call_stack.len() >= CALL_STACK_SIZE_LIMIT - 1 {
+                if eval.function_call_depth >= CALL_STACK_SIZE_LIMIT - 1 {
                     return Err(EvalError::CallStackOverflow);
                 }
 
-                let mut scope = Scope::new();
+                let mut scope = Scope::with_parent(parent_scope);
                 if let Some(recv) = receiver {
                     scope.set_var("this", recv);
                 }
@@ -824,11 +829,8 @@ impl Function {
                     scope.set_var(name, value);
                 }
 
-                if let Some(function_scope) = eval.function_scope.take() {
-                    eval.call_stack.push(function_scope);
-                }
-                eval.function_scope = Some(scope);
-
+                eval.function_call_depth += 1;
+                std::mem::swap(&mut scope, &mut eval.scope);
                 let call_result = match evaluate(body, eval) {
                     Err(EvalError::InternalControlFlow(ControlFlow::Return(val))) => Ok(val),
                     Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => {
@@ -839,7 +841,9 @@ impl Function {
                     }
                     other => other,
                 };
-                eval.function_scope = eval.call_stack.pop();
+                std::mem::swap(&mut scope, &mut eval.scope);
+                eval.function_call_depth -= 1;
+
                 call_result
             }
             FunctionKind::UserDefinedVm { .. } => Err(EvalError::GenericError(
@@ -887,6 +891,7 @@ pub enum FunctionKind {
         name: Option<String>,
         arg_names: Vec<String>,
         body: Ast,
+        parent_scope: Scope,
     },
     UserDefinedVm {
         param_count: usize,
@@ -914,23 +919,48 @@ impl Debug for FunctionKind {
     }
 }
 
-struct Scope {
+#[derive(Debug)]
+struct InnerScope {
     variables: BTreeMap<String, Value>,
+    parent_scope: Option<Scope>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Scope(Rc<RefCell<InnerScope>>);
+
+impl Default for Scope {
+    fn default() -> Self {
+        Scope::new()
+    }
 }
 
 impl Scope {
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> Scope {
+        Scope(Rc::new(RefCell::new(InnerScope {
             variables: BTreeMap::new(),
-        }
+            parent_scope: None,
+        })))
+    }
+
+    pub fn with_parent(parent: &Scope) -> Scope {
+        Scope(Rc::new(RefCell::new(InnerScope {
+            variables: BTreeMap::new(),
+            parent_scope: Some(parent.clone()),
+        })))
     }
 
     pub fn get_var(&self, name: &str) -> Option<Value> {
-        self.variables.get(name).cloned()
+        let self_borrow = self.0.borrow();
+        self_borrow.variables.get(name).cloned().or_else(|| {
+            self_borrow
+                .parent_scope
+                .as_ref()
+                .and_then(|s| s.get_var(name))
+        })
     }
 
     pub fn set_var(&mut self, name: impl Into<String>, val: Value) {
-        self.variables.insert(name.into(), val);
+        self.0.borrow_mut().variables.insert(name.into(), val);
     }
 }
 
@@ -959,9 +989,8 @@ impl Default for EvaluatorBuilder {
 impl EvaluatorBuilder {
     pub fn build(self) -> Evaluator {
         let mut eval = Evaluator {
-            global_scope: Scope::new(),
-            function_scope: None,
-            call_stack: Vec::new(),
+            scope: Scope::new(),
+            function_call_depth: 0,
             ctx: RuntimeContext::new(
                 BufReader::new(self.stdin),
                 self.stdout,
@@ -1026,9 +1055,8 @@ impl EvaluatorBuilder {
 }
 
 pub struct Evaluator {
-    global_scope: Scope,
-    function_scope: Option<Scope>,
-    call_stack: Vec<Scope>,
+    scope: Scope,
+    function_call_depth: usize,
     pub(crate) ctx: RuntimeContext,
 }
 
@@ -1087,18 +1115,11 @@ impl Evaluator {
     }
 
     pub fn get_var(&self, name: &str) -> Option<Value> {
-        self.function_scope
-            .as_ref()
-            .and_then(|s| s.get_var(name))
-            .or_else(|| self.global_scope.get_var(name))
+        self.scope.get_var(name)
     }
 
     pub fn set_var(&mut self, name: impl Into<String>, val: Value) {
-        let scope = self
-            .function_scope
-            .as_mut()
-            .unwrap_or(&mut self.global_scope);
-        scope.set_var(name, val);
+        self.scope.set_var(name, val);
     }
 }
 
@@ -1113,12 +1134,18 @@ pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
                 Some(name.as_str()),
                 arg_names.clone(),
                 *body.clone(),
+                eval.scope.clone(),
             )?;
             eval.set_var(name, Value::Function(func));
             NULL_VALUE
         }
         Ast::UnnamedFunction { arg_names, body } => {
-            let func = Function::new_user_defined_ast(None, arg_names.clone(), *body.clone())?;
+            let func = Function::new_user_defined_ast(
+                None,
+                arg_names.clone(),
+                *body.clone(),
+                eval.scope.clone(),
+            )?;
             Value::Function(func)
         }
         Ast::MemberAccess {
