@@ -6,7 +6,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum AstKind {
-    Lines(Vec<Ast>),
+    Block(Vec<Ast>),
     Null,
     NumberLiteral(f64),
     BooleanLiteral(bool),
@@ -173,31 +173,40 @@ impl<'a> Parser<'a> {
 
     /// Entrypoint to the parser
     fn parse(&mut self) -> Result<Ast, ParseError> {
-        let ast = self.parse_block()?;
+        let ast = self.parse_block(Span::new(0, 0))?;
         // If some function stopped parsing for some reason and we haven't parsed all tokens, the
         // token at the current position is unexpected.
         //
         // For example: A `}`, where the function stops parsing to let the caller decide whether
         // the token makes sense at this place.
-        if self.idx < self.tokens.len() {
-            return Err(ParseError::UnexpectedToken {
-                token: self.tokens[self.idx].clone(),
+        match self.next() {
+            Some(Token {
+                kind: TokenKind::Eof,
+                ..
+            }) => Ok(ast),
+            Some(t) => Err(ParseError::UnexpectedToken {
+                token: t.clone(),
                 expected: None,
-            });
+            }),
+            None => panic!("EOF token was consumed while parsing"),
         }
-        Ok(ast)
     }
 
-    fn parse_block(&mut self) -> Result<Ast, ParseError> {
-        let mut lines = Vec::new();
+    fn parse_block(&mut self, start_span: Span) -> Result<Ast, ParseError> {
+        let mut lines = Vec::<Ast>::new();
         let mut want_newline_this_iteration = false;
-        while let Some(token) = self.peek() {
-            let (line, want_newline_next_iteration) = match &token.kind {
-                TokenKind::Eof | TokenKind::Newline => {
+        let end_span = loop {
+            let token = self.peek().expect("Tokens didn't contain EOF");
+            let (line, want_newline_next_iteration) = match token.kind {
+                TokenKind::Eof => {
+                    let end_span = lines.last().map(|ast| ast.span).unwrap_or(start_span);
+                    break end_span;
+                }
+                TokenKind::Newline => {
                     self.next();
                     (None, false)
                 }
-                TokenKind::RBrace => break,
+                TokenKind::RBrace => break token.span,
                 // All following constructs can only appear at the beginning of a line
                 _ if want_newline_this_iteration => {
                     return Err(ParseError::UnexpectedToken {
@@ -236,16 +245,10 @@ impl<'a> Parser<'a> {
             }
 
             want_newline_this_iteration = want_newline_next_iteration;
-        }
-
-        let span = match (lines.first(), lines.last()) {
-            (Some(first), Some(last)) => first.span.until(last.span),
-            _ => {
-                // TODO: Is there a better way to do this?
-                Span::new(0, 0)
-            }
         };
-        Ok(Ast::new(AstKind::Lines(lines), span))
+
+        let span = start_span.until(end_span);
+        Ok(Ast::new(AstKind::Block(lines), span))
     }
 
     fn parse_expression_or_assignment(&mut self) -> Result<Ast, ParseError> {
@@ -665,8 +668,8 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::RParen)?;
         self.skip_newlines();
-        self.expect(TokenKind::LBrace)?;
-        let body = self.parse_block()?;
+        let l_brace_span = self.expect(TokenKind::LBrace)?.span;
+        let body = self.parse_block(l_brace_span)?;
         let r_brace = self.expect(TokenKind::RBrace)?;
 
         let span = start_span.until(r_brace.span);
@@ -700,8 +703,8 @@ impl<'a> Parser<'a> {
         self.skip_newlines();
         self.expect(TokenKind::RParen)?;
         self.skip_newlines();
-        self.expect(TokenKind::LBrace)?;
-        let if_body = self.parse_block()?;
+        let l_brace_span = self.expect(TokenKind::LBrace)?.span;
+        let if_body = self.parse_block(l_brace_span)?;
         self.skip_newlines();
         let if_r_brace_span = self.expect(TokenKind::RBrace)?.span;
 
@@ -716,8 +719,8 @@ impl<'a> Parser<'a> {
                 (Some(Box::new(else_if_statement)), else_if_statement_span)
             } else {
                 self.skip_newlines();
-                self.expect(TokenKind::LBrace)?;
-                let else_body = self.parse_block()?;
+                let l_brace_span = self.expect(TokenKind::LBrace)?.span;
+                let else_body = self.parse_block(l_brace_span)?;
                 self.skip_newlines();
                 let else_r_brace = self.expect(TokenKind::RBrace)?;
                 (Some(Box::new(else_body)), else_r_brace.span)
@@ -747,8 +750,8 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::RParen)?;
         self.skip_newlines();
 
-        self.expect(TokenKind::LBrace)?;
-        let body = self.parse_block()?;
+        let l_brace_span = self.expect(TokenKind::LBrace)?.span;
+        let body = self.parse_block(l_brace_span)?;
         let r_brace = self.expect(TokenKind::RBrace)?;
 
         Ok(Ast::new(
@@ -775,8 +778,8 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::RParen)?;
         self.skip_newlines();
 
-        self.expect(TokenKind::LBrace)?;
-        let body = self.parse_block()?;
+        let l_brace_span = self.expect(TokenKind::LBrace)?.span;
+        let body = self.parse_block(l_brace_span)?;
         let r_brace = self.expect(TokenKind::RBrace)?;
 
         Ok(Ast::new(

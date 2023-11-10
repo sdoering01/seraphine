@@ -1163,7 +1163,7 @@ pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
             let index = evaluate(index_ast, eval)?;
             value.get_index(index)?
         }
-        AstKind::Lines(lines) => {
+        AstKind::Block(lines) => {
             let mut result = NULL_VALUE;
             for line in lines {
                 result = evaluate(line, eval)?;

@@ -260,7 +260,7 @@ impl CodeGenerator {
 
     pub fn generate(&mut self, ast: &Ast) {
         match &ast.kind {
-            AstKind::Lines(l) => {
+            AstKind::Block(l) => {
                 for line in l {
                     self.generate(line);
                 }
@@ -569,7 +569,7 @@ impl CodeGenerator {
 
         self.with_loop_continue_idx(None, |self_| self_.generate(body));
 
-        let AstKind::Lines(lines) = &body.kind else {
+        let AstKind::Block(lines) = &body.kind else {
             panic!("tried generating function for AST that doesn't represent a block");
         };
         let should_push_null = match lines.last() {
@@ -627,7 +627,7 @@ impl CodeGenerator {
 fn returns_implicit_null(ast: &Ast) -> bool {
     // List all variants explicitly, so behavior of new variants has to be checked explicitly
     match ast.kind {
-        AstKind::Lines(_)
+        AstKind::Block(_)
         | AstKind::Assign(_, _)
         | AstKind::IndexingAssign { .. }
         | AstKind::MemberAssign { .. }
