@@ -161,7 +161,9 @@ impl ParseError {
         let error = self.to_string();
         match self {
             Self::NoTokensLeft => error,
-            Self::UnexpectedToken { token, .. } => format_error(error, input, file_name, token.span.start),
+            Self::UnexpectedToken { token, .. } => {
+                format_error(error, input, file_name, token.span.start)
+            }
             Self::ExpectedIdentifier { pos } => format_error(error, input, file_name, *pos),
             Self::InvalidOperator { pos, .. } => format_error(error, input, file_name, *pos),
         }

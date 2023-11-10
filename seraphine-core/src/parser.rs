@@ -1,11 +1,11 @@
 use crate::{
-    common::Pos,
+    common::{Pos, Span},
     error::{OperatorKind, ParseError},
     tokenizer::{Keyword, Operator, Token, TokenKind},
 };
 
 #[derive(Debug, Clone)]
-pub enum Ast {
+pub enum AstKind {
     Lines(Vec<Ast>),
     Null,
     NumberLiteral(f64),
@@ -82,6 +82,18 @@ pub enum Ast {
     Return(Option<Box<Ast>>),
 }
 
+#[derive(Debug, Clone)]
+pub struct Ast {
+    pub kind: AstKind,
+    pub span: Span,
+}
+
+impl Ast {
+    pub fn new(kind: AstKind, span: Span) -> Ast {
+        Ast { kind, span }
+    }
+}
+
 /// Returns the precedence of the operator.
 ///
 /// Higher precedence means that the operator is calculated first (e.g. multiplication has higher
@@ -123,24 +135,26 @@ fn op_precedence(op: Operator, is_binary: bool, op_pos: Pos) -> Result<u8, Parse
 }
 
 fn combine_lhs_rhs(op: Operator, lhs: Ast, rhs: Ast) -> Result<Ast, ParseError> {
-    let combined = match op {
-        Operator::Plus => Ast::Add(Box::new(lhs), Box::new(rhs)),
-        Operator::Minus => Ast::Subtract(Box::new(lhs), Box::new(rhs)),
-        Operator::Star => Ast::Multiply(Box::new(lhs), Box::new(rhs)),
-        Operator::Slash => Ast::Divide(Box::new(lhs), Box::new(rhs)),
-        Operator::Percent => Ast::Modulo(Box::new(lhs), Box::new(rhs)),
-        Operator::Caret => Ast::Power(Box::new(lhs), Box::new(rhs)),
-        Operator::Equal => Ast::Equality(Box::new(lhs), Box::new(rhs)),
-        Operator::Unequal => Ast::Inequality(Box::new(lhs), Box::new(rhs)),
-        Operator::LessThan => Ast::LessThan(Box::new(lhs), Box::new(rhs)),
-        Operator::GreaterThan => Ast::GreaterThan(Box::new(lhs), Box::new(rhs)),
-        Operator::LessThanOrEqual => Ast::LessThanOrEqual(Box::new(lhs), Box::new(rhs)),
-        Operator::GreaterThanOrEqual => Ast::GreaterThanOrEqual(Box::new(lhs), Box::new(rhs)),
-        Operator::And => Ast::And(Box::new(lhs), Box::new(rhs)),
-        Operator::Or => Ast::Or(Box::new(lhs), Box::new(rhs)),
+    let span = lhs.span.until(rhs.span);
+
+    let kind = match op {
+        Operator::Plus => AstKind::Add(Box::new(lhs), Box::new(rhs)),
+        Operator::Minus => AstKind::Subtract(Box::new(lhs), Box::new(rhs)),
+        Operator::Star => AstKind::Multiply(Box::new(lhs), Box::new(rhs)),
+        Operator::Slash => AstKind::Divide(Box::new(lhs), Box::new(rhs)),
+        Operator::Percent => AstKind::Modulo(Box::new(lhs), Box::new(rhs)),
+        Operator::Caret => AstKind::Power(Box::new(lhs), Box::new(rhs)),
+        Operator::Equal => AstKind::Equality(Box::new(lhs), Box::new(rhs)),
+        Operator::Unequal => AstKind::Inequality(Box::new(lhs), Box::new(rhs)),
+        Operator::LessThan => AstKind::LessThan(Box::new(lhs), Box::new(rhs)),
+        Operator::GreaterThan => AstKind::GreaterThan(Box::new(lhs), Box::new(rhs)),
+        Operator::LessThanOrEqual => AstKind::LessThanOrEqual(Box::new(lhs), Box::new(rhs)),
+        Operator::GreaterThanOrEqual => AstKind::GreaterThanOrEqual(Box::new(lhs), Box::new(rhs)),
+        Operator::And => AstKind::And(Box::new(lhs), Box::new(rhs)),
+        Operator::Or => AstKind::Or(Box::new(lhs), Box::new(rhs)),
         Operator::Exclamation => unreachable!(),
     };
-    Ok(combined)
+    Ok(Ast::new(kind, span))
 }
 
 pub fn parse(tokens: &[Token]) -> Result<Ast, ParseError> {
@@ -206,12 +220,12 @@ impl<'a> Parser<'a> {
                 TokenKind::Keyword(Keyword::While) => (Some(self.parse_while_loop()?), true),
                 TokenKind::Keyword(Keyword::For) => (Some(self.parse_for_loop()?), true),
                 TokenKind::Keyword(Keyword::Continue) => {
-                    self.next();
-                    (Some(Ast::Continue), true)
+                    let token = self.next().unwrap();
+                    (Some(Ast::new(AstKind::Continue, token.span)), true)
                 }
                 TokenKind::Keyword(Keyword::Break) => {
-                    self.next();
-                    (Some(Ast::Break), true)
+                    let token = self.next().unwrap();
+                    (Some(Ast::new(AstKind::Break, token.span)), true)
                 }
                 TokenKind::Keyword(Keyword::Return) => (Some(self.parse_return()?), true),
                 _ => (Some(self.parse_expression_or_assignment()?), true),
@@ -223,42 +237,59 @@ impl<'a> Parser<'a> {
 
             want_newline_this_iteration = want_newline_next_iteration;
         }
-        Ok(Ast::Lines(lines))
+
+        let span = match (lines.first(), lines.last()) {
+            (Some(first), Some(last)) => first.span.until(last.span),
+            _ => {
+                // TODO: Is there a better way to do this?
+                Span::new(0, 0)
+            }
+        };
+        Ok(Ast::new(AstKind::Lines(lines), span))
     }
 
     fn parse_expression_or_assignment(&mut self) -> Result<Ast, ParseError> {
         let is_potential_assignment = matches!(self.peek_kind(), Some(TokenKind::Identifier(_)));
         let lhs = self.parse_expression()?;
         if is_potential_assignment && self.peek_next_non_newline_kind() == Some(&TokenKind::Equal) {
-            match lhs {
-                Ast::Variable(var) => {
+            match lhs.kind {
+                AstKind::Variable(var) => {
                     self.skip_newlines();
                     self.next();
                     self.skip_newlines();
                     let rhs = self.parse_expression()?;
-                    return Ok(Ast::Assign(var, Box::new(rhs)));
+                    let span = lhs.span.until(rhs.span);
+                    return Ok(Ast::new(AstKind::Assign(var, Box::new(rhs)), span));
                 }
-                Ast::Indexing { value, index } => {
+                AstKind::Indexing { value, index } => {
                     self.skip_newlines();
                     self.next();
                     self.skip_newlines();
                     let rhs = self.parse_expression()?;
-                    return Ok(Ast::IndexingAssign {
-                        value,
-                        index,
-                        rhs: Box::new(rhs),
-                    });
+                    let span = lhs.span.until(rhs.span);
+                    return Ok(Ast::new(
+                        AstKind::IndexingAssign {
+                            value,
+                            index,
+                            rhs: Box::new(rhs),
+                        },
+                        span,
+                    ));
                 }
-                Ast::MemberAccess { value, member } => {
+                AstKind::MemberAccess { value, member } => {
                     self.skip_newlines();
                     self.next();
                     self.skip_newlines();
                     let rhs = self.parse_expression()?;
-                    return Ok(Ast::MemberAssign {
-                        value,
-                        member,
-                        rhs: Box::new(rhs),
-                    });
+                    let span = lhs.span.until(rhs.span);
+                    return Ok(Ast::new(
+                        AstKind::MemberAssign {
+                            value,
+                            member,
+                            rhs: Box::new(rhs),
+                        },
+                        span,
+                    ));
                 }
                 _ => {}
             }
@@ -324,6 +355,7 @@ impl<'a> Parser<'a> {
     ) -> Result<Ast, ParseError> {
         match self.peek() {
             Some(token) => {
+                let token_span = token.span;
                 match token.kind {
                     TokenKind::Operator(Operator::Minus) => {
                         let pos = token.span.start;
@@ -334,7 +366,8 @@ impl<'a> Parser<'a> {
                         // after each other
                         let rhs =
                             self.parse_expression_with_min_precedence(unary_minus_precedence)?;
-                        Ok(Ast::UnaryMinus(Box::new(rhs)))
+                        let span = token_span.until(rhs.span);
+                        Ok(Ast::new(AstKind::UnaryMinus(Box::new(rhs)), span))
                     }
                     TokenKind::Operator(Operator::Exclamation) => {
                         let pos = token.span.start;
@@ -346,7 +379,8 @@ impl<'a> Parser<'a> {
                         // after each other
                         let rhs =
                             self.parse_expression_with_min_precedence(boolean_negate_precedence)?;
-                        Ok(Ast::BooleanNegate(Box::new(rhs)))
+                        let span = token_span.until(rhs.span);
+                        Ok(Ast::new(AstKind::BooleanNegate(Box::new(rhs)), span))
                     }
                     TokenKind::LParen
                     | TokenKind::LBrace
@@ -390,42 +424,56 @@ impl<'a> Parser<'a> {
 
     fn parse_identifier_or_value(&mut self) -> Result<Ast, ParseError> {
         let mut ast = match self.next() {
-            Some(token) => match &token.kind {
-                TokenKind::LParen => {
-                    self.skip_newlines();
-                    let inner = self.parse_expression()?;
-                    self.skip_newlines();
-                    self.expect(TokenKind::RParen)?;
-                    Ast::Brackets(Box::new(inner))
+            Some(token) => {
+                let token_span = token.span;
+                match &token.kind {
+                    TokenKind::LParen => {
+                        self.skip_newlines();
+                        let inner = self.parse_expression()?;
+                        self.skip_newlines();
+                        let r_paren = self.expect(TokenKind::RParen)?;
+                        Ast::new(
+                            AstKind::Brackets(Box::new(inner)),
+                            token_span.until(r_paren.span),
+                        )
+                    }
+                    TokenKind::LBrace => {
+                        // We match on `self.next()`, but the parse function expects the `{` token
+                        self.idx -= 1;
+                        self.parse_object_literal()?
+                    }
+                    TokenKind::LBracket => {
+                        // We match on `self.next()`, but the parse function expects the `[` token
+                        self.idx -= 1;
+                        self.parse_list_literal()?
+                    }
+                    TokenKind::Identifier(name) => {
+                        Ast::new(AstKind::Variable(name.clone()), token.span)
+                    }
+                    TokenKind::Number(num) => Ast::new(AstKind::NumberLiteral(*num), token.span),
+                    TokenKind::String(str) => {
+                        Ast::new(AstKind::StringLiteral(str.clone()), token.span)
+                    }
+                    TokenKind::Keyword(Keyword::True) => {
+                        Ast::new(AstKind::BooleanLiteral(true), token.span)
+                    }
+                    TokenKind::Keyword(Keyword::False) => {
+                        Ast::new(AstKind::BooleanLiteral(false), token.span)
+                    }
+                    TokenKind::Keyword(Keyword::Null) => Ast::new(AstKind::Null, token.span),
+                    TokenKind::Keyword(Keyword::Fn) => {
+                        // We match on `self.next()`, but the parse function expects the `fn` keyword
+                        self.idx -= 1;
+                        self.parse_function_definition(false)?
+                    }
+                    _ => {
+                        return Err(ParseError::UnexpectedToken {
+                            token: token.clone(),
+                            expected: None,
+                        })
+                    }
                 }
-                TokenKind::LBrace => {
-                    // We match on `self.next()`, but the parse function expects the `{` token
-                    self.idx -= 1;
-                    self.parse_object_literal()?
-                }
-                TokenKind::LBracket => {
-                    // We match on `self.next()`, but the parse function expects the `[` token
-                    self.idx -= 1;
-                    self.parse_list_literal()?
-                }
-                TokenKind::Identifier(name) => Ast::Variable(name.clone()),
-                TokenKind::Number(num) => Ast::NumberLiteral(*num),
-                TokenKind::String(str) => Ast::StringLiteral(str.clone()),
-                TokenKind::Keyword(Keyword::True) => Ast::BooleanLiteral(true),
-                TokenKind::Keyword(Keyword::False) => Ast::BooleanLiteral(false),
-                TokenKind::Keyword(Keyword::Null) => Ast::Null,
-                TokenKind::Keyword(Keyword::Fn) => {
-                    // We match on `self.next()`, but the parse function expects the `fn` keyword
-                    self.idx -= 1;
-                    self.parse_function_definition(false)?
-                }
-                _ => {
-                    return Err(ParseError::UnexpectedToken {
-                        token: token.clone(),
-                        expected: None,
-                    })
-                }
-            },
+            }
             None => return Err(ParseError::NoTokensLeft),
         };
         loop {
@@ -442,11 +490,15 @@ impl<'a> Parser<'a> {
                     self.skip_newlines();
                     self.next();
                     self.skip_newlines();
-                    let member = self.expect_identifier()?;
-                    ast = Ast::MemberAccess {
-                        value: Box::new(ast),
-                        member: member.to_string(),
-                    };
+                    let ident = self.expect_identifier()?;
+                    let span = ast.span.until(ident.1);
+                    ast = Ast::new(
+                        AstKind::MemberAccess {
+                            value: Box::new(ast),
+                            member: ident.0.to_string(),
+                        },
+                        span,
+                    );
                 }
                 _ => break,
             }
@@ -471,11 +523,15 @@ impl<'a> Parser<'a> {
             self.next();
             self.skip_newlines();
         }
-        self.expect(TokenKind::RParen)?;
-        Ok(Ast::FunctionCall {
-            value: Box::new(called_value),
-            args,
-        })
+        let r_paren = self.expect(TokenKind::RParen)?;
+        let span = called_value.span.until(r_paren.span);
+        Ok(Ast::new(
+            AstKind::FunctionCall {
+                value: Box::new(called_value),
+                args,
+            },
+            span,
+        ))
     }
 
     fn parse_indexing(&mut self, value: Ast) -> Result<Ast, ParseError> {
@@ -484,20 +540,24 @@ impl<'a> Parser<'a> {
         self.skip_newlines();
         let index = self.parse_expression()?;
         self.skip_newlines();
-        self.expect(TokenKind::RBracket)?;
-        Ok(Ast::Indexing {
-            value: Box::new(value),
-            index: Box::new(index),
-        })
+        let r_bracket = self.expect(TokenKind::RBracket)?;
+        let span = value.span.until(r_bracket.span);
+        Ok(Ast::new(
+            AstKind::Indexing {
+                value: Box::new(value),
+                index: Box::new(index),
+            },
+            span,
+        ))
     }
 
     fn parse_object_literal(&mut self) -> Result<Ast, ParseError> {
         // { <key1>[: <val1> | <unnamed_function_definition_without_fn>], ... }
-        self.expect(TokenKind::LBrace)?;
+        let l_brace_span = self.expect(TokenKind::LBrace)?.span;
         let mut key_value_pairs = Vec::new();
         while self.peek_kind() != Some(&TokenKind::RBrace) {
             self.skip_newlines();
-            let key = self.expect_identifier()?.to_string();
+            let key = self.expect_identifier()?;
             self.skip_newlines();
             let value = match self.peek() {
                 Some(Token {
@@ -511,20 +571,21 @@ impl<'a> Parser<'a> {
                 Some(Token {
                     kind: TokenKind::LParen,
                     ..
-                }) => self.parse_function_definition_without_fn(false)?,
+                }) => self.parse_function_definition_without_fn(false, key.1)?,
                 Some(Token {
                     kind: TokenKind::Comma | TokenKind::RBrace,
-                    ..
-                }) => Ast::Variable(key.clone()),
+                    span,
+                }) => Ast::new(AstKind::Variable(key.0.to_string()), *span),
                 Some(t) => {
                     return Err(ParseError::UnexpectedToken {
                         token: t.clone(),
                         expected: Some(TokenKind::Colon),
                     })
                 }
+                // TODO: Remove `None` branch and check for EOF instead
                 None => return Err(ParseError::NoTokensLeft),
             };
-            key_value_pairs.push((key, value));
+            key_value_pairs.push((key.0, value));
 
             self.skip_newlines();
             if self.peek_kind() != Some(&TokenKind::Comma) {
@@ -534,13 +595,16 @@ impl<'a> Parser<'a> {
             self.next();
             self.skip_newlines();
         }
-        self.expect(TokenKind::RBrace)?;
-        Ok(Ast::ObjectLiteral(key_value_pairs))
+        let r_brace = self.expect(TokenKind::RBrace)?;
+        Ok(Ast::new(
+            AstKind::ObjectLiteral(key_value_pairs),
+            l_brace_span.until(r_brace.span),
+        ))
     }
 
     fn parse_list_literal(&mut self) -> Result<Ast, ParseError> {
         // [ <val1>, <val2>, ... ]
-        self.expect(TokenKind::LBracket)?;
+        let l_bracket_span = self.expect(TokenKind::LBracket)?.span;
         self.skip_newlines();
         let mut values = Vec::new();
         while self.peek_kind() != Some(&TokenKind::RBracket) {
@@ -555,21 +619,28 @@ impl<'a> Parser<'a> {
             self.next();
             self.skip_newlines();
         }
-        self.expect(TokenKind::RBracket)?;
-        Ok(Ast::ListLiteral(values))
+        let r_bracket = self.expect(TokenKind::RBracket)?;
+        Ok(Ast::new(
+            AstKind::ListLiteral(values),
+            l_bracket_span.until(r_bracket.span),
+        ))
     }
 
     fn parse_function_definition(&mut self, named: bool) -> Result<Ast, ParseError> {
         // fn <function_definition_without_fn>
-        self.expect(TokenKind::Keyword(Keyword::Fn))?;
+        let fn_keyword_span = self.expect(TokenKind::Keyword(Keyword::Fn))?.span;
         self.skip_newlines();
-        self.parse_function_definition_without_fn(named)
+        self.parse_function_definition_without_fn(named, fn_keyword_span)
     }
 
-    fn parse_function_definition_without_fn(&mut self, named: bool) -> Result<Ast, ParseError> {
+    fn parse_function_definition_without_fn(
+        &mut self,
+        named: bool,
+        start_span: Span,
+    ) -> Result<Ast, ParseError> {
         // [ <name> ] (<arg1>, <arg2>, ...) { <body> }
         let fn_name = if named {
-            let ident = self.expect_identifier()?.to_string();
+            let ident = self.expect_identifier()?.0.to_string();
             self.skip_newlines();
             Some(ident)
         } else {
@@ -596,25 +667,32 @@ impl<'a> Parser<'a> {
         self.skip_newlines();
         self.expect(TokenKind::LBrace)?;
         let body = self.parse_block()?;
-        self.expect(TokenKind::RBrace)?;
+        let r_brace = self.expect(TokenKind::RBrace)?;
 
+        let span = start_span.until(r_brace.span);
         if let Some(name) = fn_name {
-            Ok(Ast::FunctionDefinition {
-                name,
-                arg_names,
-                body: Box::new(body),
-            })
+            Ok(Ast::new(
+                AstKind::FunctionDefinition {
+                    name,
+                    arg_names,
+                    body: Box::new(body),
+                },
+                span,
+            ))
         } else {
-            Ok(Ast::UnnamedFunction {
-                arg_names,
-                body: Box::new(body),
-            })
+            Ok(Ast::new(
+                AstKind::UnnamedFunction {
+                    arg_names,
+                    body: Box::new(body),
+                },
+                span,
+            ))
         }
     }
 
     fn parse_if_statement(&mut self) -> Result<Ast, ParseError> {
         // if ( <expr> ) { <body> } [ else if ( <expr> ) { <body> } [ ... ] ] [ else { <body> } ]
-        self.expect(TokenKind::Keyword(Keyword::If))?;
+        let if_keyword_span = self.expect(TokenKind::Keyword(Keyword::If))?.span;
         self.skip_newlines();
         self.expect(TokenKind::LParen)?;
         self.skip_newlines();
@@ -625,38 +703,42 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LBrace)?;
         let if_body = self.parse_block()?;
         self.skip_newlines();
-        self.expect(TokenKind::RBrace)?;
+        let if_r_brace_span = self.expect(TokenKind::RBrace)?.span;
 
-        let else_body = if self.peek_next_non_newline().map(|t| &t.kind)
+        let (else_body, end_span) = if self.peek_next_non_newline().map(|t| &t.kind)
             == Some(&TokenKind::Keyword(Keyword::Else))
         {
             self.skip_newlines();
             self.next();
             if self.peek_kind() == Some(&TokenKind::Keyword(Keyword::If)) {
                 let else_if_statement = self.parse_if_statement()?;
-                Some(Box::new(else_if_statement))
+                let else_if_statement_span = else_if_statement.span;
+                (Some(Box::new(else_if_statement)), else_if_statement_span)
             } else {
                 self.skip_newlines();
                 self.expect(TokenKind::LBrace)?;
                 let else_body = self.parse_block()?;
                 self.skip_newlines();
-                self.expect(TokenKind::RBrace)?;
-                Some(Box::new(else_body))
+                let else_r_brace = self.expect(TokenKind::RBrace)?;
+                (Some(Box::new(else_body)), else_r_brace.span)
             }
         } else {
-            None
+            (None, if_r_brace_span)
         };
 
-        Ok(Ast::IfStatement {
-            condition: Box::new(condition),
-            if_body: Box::new(if_body),
-            else_body,
-        })
+        Ok(Ast::new(
+            AstKind::IfStatement {
+                condition: Box::new(condition),
+                if_body: Box::new(if_body),
+                else_body,
+            },
+            if_keyword_span.until(end_span),
+        ))
     }
 
     fn parse_while_loop(&mut self) -> Result<Ast, ParseError> {
         // while ( <expr> ) { <body> }
-        self.expect(TokenKind::Keyword(Keyword::While))?;
+        let while_keyword_span = self.expect(TokenKind::Keyword(Keyword::While))?.span;
         self.skip_newlines();
         self.expect(TokenKind::LParen)?;
         self.skip_newlines();
@@ -667,21 +749,24 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::LBrace)?;
         let body = self.parse_block()?;
-        self.expect(TokenKind::RBrace)?;
+        let r_brace = self.expect(TokenKind::RBrace)?;
 
-        Ok(Ast::WhileLoop {
-            condition: Box::new(condition),
-            body: Box::new(body),
-        })
+        Ok(Ast::new(
+            AstKind::WhileLoop {
+                condition: Box::new(condition),
+                body: Box::new(body),
+            },
+            while_keyword_span.until(r_brace.span),
+        ))
     }
 
     fn parse_for_loop(&mut self) -> Result<Ast, ParseError> {
         // for ( <name> in <expr> ) { <body> }
-        self.expect(TokenKind::Keyword(Keyword::For))?;
+        let for_keyword_span = self.expect(TokenKind::Keyword(Keyword::For))?.span;
         self.skip_newlines();
         self.expect(TokenKind::LParen)?;
         self.skip_newlines();
-        let variable = self.expect_identifier()?.to_string();
+        let variable = self.expect_identifier()?.0.to_string();
         self.skip_newlines();
         self.expect(TokenKind::Keyword(Keyword::In))?;
         self.skip_newlines();
@@ -692,23 +777,30 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::LBrace)?;
         let body = self.parse_block()?;
-        self.expect(TokenKind::RBrace)?;
+        let r_brace = self.expect(TokenKind::RBrace)?;
 
-        Ok(Ast::ForLoop {
-            variable,
-            iterable: Box::new(iterable),
-            body: Box::new(body),
-        })
+        Ok(Ast::new(
+            AstKind::ForLoop {
+                variable,
+                iterable: Box::new(iterable),
+                body: Box::new(body),
+            },
+            for_keyword_span.until(r_brace.span),
+        ))
     }
 
     fn parse_return(&mut self) -> Result<Ast, ParseError> {
         // return [ <expr> ]
-        self.expect(TokenKind::Keyword(Keyword::Return))?;
-        let expr = match self.peek_kind() {
-            Some(&TokenKind::Newline | &TokenKind::RBrace) => None,
-            _ => Some(Box::new(self.parse_expression()?)),
+        let return_keyword_span = self.expect(TokenKind::Keyword(Keyword::Return))?.span;
+        let (expr, span) = match self.peek_kind() {
+            Some(&TokenKind::Newline | &TokenKind::RBrace) => (None, return_keyword_span),
+            _ => {
+                let expr = self.parse_expression()?;
+                let expr_span = expr.span;
+                (Some(Box::new(expr)), return_keyword_span.until(expr_span))
+            }
         };
-        Ok(Ast::Return(expr))
+        Ok(Ast::new(AstKind::Return(expr), span))
     }
 
     /// Takes the next token, behaving like `next` of an iterator.
@@ -768,7 +860,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Asserts that `expected` is the next token, while also advancing the position.
-    fn expect(&mut self, expected: TokenKind) -> Result<(), ParseError> {
+    fn expect(&mut self, expected: TokenKind) -> Result<&Token, ParseError> {
         match self.next() {
             Some(actual) => {
                 if actual.kind != expected {
@@ -777,7 +869,7 @@ impl<'a> Parser<'a> {
                         expected: Some(expected),
                     })
                 } else {
-                    Ok(())
+                    Ok(actual)
                 }
             }
             None => Err(ParseError::NoTokensLeft),
@@ -786,12 +878,12 @@ impl<'a> Parser<'a> {
 
     /// Asserts that the next token is an identifier, returning the inner string slice of the
     /// identifier and advancing the position.
-    fn expect_identifier(&mut self) -> Result<&str, ParseError> {
+    fn expect_identifier(&mut self) -> Result<(String, Span), ParseError> {
         match self.next() {
             Some(Token {
                 kind: TokenKind::Identifier(ref name),
-                ..
-            }) => Ok(name),
+                span,
+            }) => Ok((name.to_string(), *span)),
             Some(Token { span, .. }) => Err(ParseError::ExpectedIdentifier { pos: span.start }),
             None => Err(ParseError::NoTokensLeft),
         }

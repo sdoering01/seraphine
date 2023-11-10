@@ -1,9 +1,6 @@
 use std::{iter::Peekable, str::Chars};
 
-use crate::{
-    common::Span,
-    error::TokenizeError,
-};
+use crate::{common::Span, error::TokenizeError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Keyword {
@@ -89,8 +86,14 @@ pub enum TokenKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
-    pub span: Span,
     pub kind: TokenKind,
+    pub span: Span,
+}
+
+impl Token {
+    pub fn new(kind: TokenKind, span: Span) -> Token {
+        Token { kind, span }
+    }
 }
 
 pub fn tokenize(s: &str) -> Result<Vec<Token>, TokenizeError> {
@@ -308,17 +311,11 @@ impl<'a> Tokenizer<'a> {
             };
 
             let token_len = self.idx - token_start_pos;
-            let token = Token {
-                kind: token_kind,
-                span: Span::new(token_start_pos, token_len),
-            };
+            let token = Token::new(token_kind, Span::new(token_start_pos, token_len));
             tokens.push(token);
         }
 
-        let eof_token = Token {
-            kind: TokenKind::Eof,
-            span: Span::new(self.idx - 1, 1),
-        };
+        let eof_token = Token::new(TokenKind::Eof, Span::new(self.idx - 1, 1));
         tokens.push(eof_token);
 
         Ok(tokens)

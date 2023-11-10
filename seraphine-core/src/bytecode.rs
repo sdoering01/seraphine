@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::parser::Ast;
+use crate::parser::{Ast, AstKind};
 
 #[derive(Debug, Clone)]
 pub enum UnaryOp {
@@ -259,48 +259,48 @@ impl CodeGenerator {
     }
 
     pub fn generate(&mut self, ast: &Ast) {
-        match ast {
-            Ast::Lines(l) => {
+        match &ast.kind {
+            AstKind::Lines(l) => {
                 for line in l {
                     self.generate(line);
                 }
             }
-            Ast::Brackets(ast) => {
+            AstKind::Brackets(ast) => {
                 self.generate(ast);
             }
-            op @ (Ast::Add(lhs, rhs)
-            | Ast::Subtract(lhs, rhs)
-            | Ast::Multiply(lhs, rhs)
-            | Ast::Divide(lhs, rhs)
-            | Ast::Modulo(lhs, rhs)
-            | Ast::Power(lhs, rhs)
-            | Ast::Equality(lhs, rhs)
-            | Ast::Inequality(lhs, rhs)
-            | Ast::LessThan(lhs, rhs)
-            | Ast::GreaterThan(lhs, rhs)
-            | Ast::LessThanOrEqual(lhs, rhs)
-            | Ast::GreaterThanOrEqual(lhs, rhs)) => {
+            op @ (AstKind::Add(lhs, rhs)
+            | AstKind::Subtract(lhs, rhs)
+            | AstKind::Multiply(lhs, rhs)
+            | AstKind::Divide(lhs, rhs)
+            | AstKind::Modulo(lhs, rhs)
+            | AstKind::Power(lhs, rhs)
+            | AstKind::Equality(lhs, rhs)
+            | AstKind::Inequality(lhs, rhs)
+            | AstKind::LessThan(lhs, rhs)
+            | AstKind::GreaterThan(lhs, rhs)
+            | AstKind::LessThanOrEqual(lhs, rhs)
+            | AstKind::GreaterThanOrEqual(lhs, rhs)) => {
                 self.generate(lhs);
                 self.generate(rhs);
 
                 let binary_op = match op {
-                    Ast::Add(_, _) => BinaryOp::Add,
-                    Ast::Subtract(_, _) => BinaryOp::Subtract,
-                    Ast::Multiply(_, _) => BinaryOp::Multiply,
-                    Ast::Divide(_, _) => BinaryOp::Divide,
-                    Ast::Modulo(_, _) => BinaryOp::Modulo,
-                    Ast::Power(_, _) => BinaryOp::Power,
-                    Ast::Equality(_, _) => BinaryOp::Equal,
-                    Ast::Inequality(_, _) => BinaryOp::Unequal,
-                    Ast::LessThan(_, _) => BinaryOp::LessThan,
-                    Ast::GreaterThan(_, _) => BinaryOp::GreaterThan,
-                    Ast::LessThanOrEqual(_, _) => BinaryOp::LessThanOrEqual,
-                    Ast::GreaterThanOrEqual(_, _) => BinaryOp::GreaterThanOrEqual,
+                    AstKind::Add(_, _) => BinaryOp::Add,
+                    AstKind::Subtract(_, _) => BinaryOp::Subtract,
+                    AstKind::Multiply(_, _) => BinaryOp::Multiply,
+                    AstKind::Divide(_, _) => BinaryOp::Divide,
+                    AstKind::Modulo(_, _) => BinaryOp::Modulo,
+                    AstKind::Power(_, _) => BinaryOp::Power,
+                    AstKind::Equality(_, _) => BinaryOp::Equal,
+                    AstKind::Inequality(_, _) => BinaryOp::Unequal,
+                    AstKind::LessThan(_, _) => BinaryOp::LessThan,
+                    AstKind::GreaterThan(_, _) => BinaryOp::GreaterThan,
+                    AstKind::LessThanOrEqual(_, _) => BinaryOp::LessThanOrEqual,
+                    AstKind::GreaterThanOrEqual(_, _) => BinaryOp::GreaterThanOrEqual,
                     _ => unreachable!(),
                 };
                 self.push_instruction(Instruction::BinaryOp(binary_op));
             }
-            op @ (Ast::And(lhs, rhs) | Ast::Or(lhs, rhs)) => {
+            op @ (AstKind::And(lhs, rhs) | AstKind::Or(lhs, rhs)) => {
                 self.generate(lhs);
                 // Make sure that lhs always is always coerced to a bool, so short-circuiting
                 // doesn't break language semantics
@@ -309,8 +309,8 @@ impl CodeGenerator {
                 let short_circuit_jump_instruction = self.current_instructions().len() - 1;
                 self.generate(rhs);
                 let binary_op = match op {
-                    Ast::And(_, _) => BinaryOp::And,
-                    Ast::Or(_, _) => BinaryOp::Or,
+                    AstKind::And(_, _) => BinaryOp::And,
+                    AstKind::Or(_, _) => BinaryOp::Or,
                     _ => unreachable!(),
                 };
                 self.push_instruction(Instruction::BinaryOp(binary_op));
@@ -318,38 +318,38 @@ impl CodeGenerator {
                 // We want to leave the value on the stack, so the operator or the following
                 // instructions can use it
                 let jump_instruction = match op {
-                    Ast::And(_, _) => Instruction::JumpIfFalseNoPop(after_and_idx),
-                    Ast::Or(_, _) => Instruction::JumpIfTrueNoPop(after_and_idx),
+                    AstKind::And(_, _) => Instruction::JumpIfFalseNoPop(after_and_idx),
+                    AstKind::Or(_, _) => Instruction::JumpIfTrueNoPop(after_and_idx),
                     _ => unreachable!(),
                 };
                 self.current_instructions_mut()[short_circuit_jump_instruction] = jump_instruction;
             }
-            Ast::UnaryMinus(ast) => {
+            AstKind::UnaryMinus(ast) => {
                 self.generate(ast);
                 self.push_instruction(Instruction::UnaryOp(UnaryOp::Negate));
             }
-            Ast::BooleanNegate(ast) => {
+            AstKind::BooleanNegate(ast) => {
                 self.generate(ast);
                 self.push_instruction(Instruction::UnaryOp(UnaryOp::Not));
             }
-            Ast::Null => self.push_instruction(Instruction::PushNull),
-            Ast::NumberLiteral(n) => {
+            AstKind::Null => self.push_instruction(Instruction::PushNull),
+            AstKind::NumberLiteral(n) => {
                 self.push_instruction(Instruction::PushNumber(*n));
             }
-            Ast::BooleanLiteral(b) => {
+            AstKind::BooleanLiteral(b) => {
                 self.push_instruction(Instruction::PushBool(*b));
             }
-            Ast::StringLiteral(s) => {
+            AstKind::StringLiteral(s) => {
                 self.push_instruction(Instruction::PushString(s.clone()));
             }
-            Ast::ListLiteral(elems) => {
+            AstKind::ListLiteral(elems) => {
                 let n_elems = elems.len();
                 for elem in elems {
                     self.generate(elem);
                 }
                 self.push_instruction(Instruction::MakeList { n_elems });
             }
-            Ast::ObjectLiteral(kv_pairs) => {
+            AstKind::ObjectLiteral(kv_pairs) => {
                 let n_keys = kv_pairs.len();
                 for (key, value) in kv_pairs {
                     self.push_instruction(Instruction::PushString(key.clone()));
@@ -357,38 +357,38 @@ impl CodeGenerator {
                 }
                 self.push_instruction(Instruction::MakeObject { n_keys });
             }
-            Ast::Variable(name) => {
+            AstKind::Variable(name) => {
                 let idx = self.variable_names.lookup_or_insert(name);
                 self.push_instruction(Instruction::LoadVariable(idx));
             }
-            Ast::Assign(name, value) => {
+            AstKind::Assign(name, value) => {
                 self.generate(value);
                 let idx = self.variable_names.lookup_or_insert(name);
                 self.push_instruction(Instruction::StoreVariable(idx));
             }
-            Ast::Indexing { value, index } => {
+            AstKind::Indexing { value, index } => {
                 self.generate(value);
                 self.generate(index);
                 self.push_instruction(Instruction::GetIndex);
             }
-            Ast::IndexingAssign { value, index, rhs } => {
+            AstKind::IndexingAssign { value, index, rhs } => {
                 self.generate(value);
                 self.generate(index);
                 self.generate(rhs);
                 self.push_instruction(Instruction::SetIndex);
             }
-            Ast::MemberAccess { value, member } => {
+            AstKind::MemberAccess { value, member } => {
                 self.generate(value);
                 self.push_instruction(Instruction::PushString(member.clone()));
                 self.push_instruction(Instruction::GetMember);
             }
-            Ast::MemberAssign { value, member, rhs } => {
+            AstKind::MemberAssign { value, member, rhs } => {
                 self.generate(value);
                 self.push_instruction(Instruction::PushString(member.clone()));
                 self.generate(rhs);
                 self.push_instruction(Instruction::SetMember);
             }
-            Ast::IfStatement {
+            AstKind::IfStatement {
                 condition,
                 if_body,
                 else_body,
@@ -419,7 +419,7 @@ impl CodeGenerator {
                 self.current_instructions_mut()[jump_to_else_instruction] =
                     Instruction::JumpIfFalse(else_start_idx);
             }
-            Ast::FunctionCall { value, args } => {
+            AstKind::FunctionCall { value, args } => {
                 self.generate(value);
                 for arg in args {
                     self.generate(arg);
@@ -428,15 +428,15 @@ impl CodeGenerator {
                     arg_count: args.len(),
                 });
             }
-            Ast::FunctionDefinition {
+            AstKind::FunctionDefinition {
                 name,
                 arg_names,
                 body,
             } => self.generate_function_definition(Some(name), arg_names, body),
-            Ast::UnnamedFunction { arg_names, body } => {
+            AstKind::UnnamedFunction { arg_names, body } => {
                 self.generate_function_definition(None, arg_names, body)
             }
-            Ast::Return(value) => {
+            AstKind::Return(value) => {
                 if let InstructionContext::Script = self.current_instruction_context {
                     // TODO: Replace with Result
                     panic!("return used outside of function");
@@ -448,7 +448,7 @@ impl CodeGenerator {
                 }
                 self.push_instruction(Instruction::Return);
             }
-            Ast::WhileLoop { condition, body } => {
+            AstKind::WhileLoop { condition, body } => {
                 let condition_start_idx = self.current_instructions().len();
                 self.generate(condition);
                 self.push_instruction(PLACEHOLDER_INSTRUCTION);
@@ -465,7 +465,7 @@ impl CodeGenerator {
                     Instruction::JumpIfFalse(after_loop_idx);
                 self.replace_break_instructions(body_start_idx, after_loop_idx, after_loop_idx);
             }
-            Ast::ForLoop {
+            AstKind::ForLoop {
                 variable,
                 iterable,
                 body,
@@ -490,12 +490,12 @@ impl CodeGenerator {
                     Instruction::AdvanceIteratorJumpIfDrained(after_loop_idx);
                 self.replace_break_instructions(loop_start_idx, after_loop_idx, after_loop_idx);
             }
-            Ast::Continue => match self.current_loop_continue_idx {
+            AstKind::Continue => match self.current_loop_continue_idx {
                 Some(idx) => self.push_instruction(Instruction::Jump(idx)),
                 // TODO: Replace with Result
                 None => panic!("continue used outside of loop"),
             },
-            Ast::Break => {
+            AstKind::Break => {
                 match self.current_loop_continue_idx {
                     Some(_) => self.push_instruction(Instruction::InternalPlaceholder(
                         PlaceholderInstructions::Break,
@@ -569,7 +569,7 @@ impl CodeGenerator {
 
         self.with_loop_continue_idx(None, |self_| self_.generate(body));
 
-        let Ast::Lines(lines) = body else {
+        let AstKind::Lines(lines) = &body.kind else {
             panic!("tried generating function for AST that doesn't represent a block");
         };
         let should_push_null = match lines.last() {
@@ -626,47 +626,47 @@ impl CodeGenerator {
 
 fn returns_implicit_null(ast: &Ast) -> bool {
     // List all variants explicitly, so behavior of new variants has to be checked explicitly
-    match ast {
-        Ast::Lines(_)
-        | Ast::Assign(_, _)
-        | Ast::IndexingAssign { .. }
-        | Ast::MemberAssign { .. }
-        | Ast::FunctionDefinition { .. }
-        | Ast::IfStatement { .. }
-        | Ast::WhileLoop { .. }
-        | Ast::ForLoop { .. }
-        | Ast::Continue
-        | Ast::Break => true,
+    match ast.kind {
+        AstKind::Lines(_)
+        | AstKind::Assign(_, _)
+        | AstKind::IndexingAssign { .. }
+        | AstKind::MemberAssign { .. }
+        | AstKind::FunctionDefinition { .. }
+        | AstKind::IfStatement { .. }
+        | AstKind::WhileLoop { .. }
+        | AstKind::ForLoop { .. }
+        | AstKind::Continue
+        | AstKind::Break => true,
 
         // `return` returns a value, even though it is a statement
-        Ast::Return(_)
-        | Ast::Null
-        | Ast::NumberLiteral(_)
-        | Ast::BooleanLiteral(_)
-        | Ast::StringLiteral(_)
-        | Ast::ListLiteral(_)
-        | Ast::ObjectLiteral(_)
-        | Ast::Variable(_)
-        | Ast::Add(_, _)
-        | Ast::Subtract(_, _)
-        | Ast::Multiply(_, _)
-        | Ast::Divide(_, _)
-        | Ast::Modulo(_, _)
-        | Ast::Power(_, _)
-        | Ast::UnaryMinus(_)
-        | Ast::BooleanNegate(_)
-        | Ast::Equality(_, _)
-        | Ast::Inequality(_, _)
-        | Ast::LessThan(_, _)
-        | Ast::GreaterThan(_, _)
-        | Ast::LessThanOrEqual(_, _)
-        | Ast::GreaterThanOrEqual(_, _)
-        | Ast::And(_, _)
-        | Ast::Or(_, _)
-        | Ast::Brackets(_)
-        | Ast::FunctionCall { .. }
-        | Ast::MemberAccess { .. }
-        | Ast::Indexing { .. }
-        | Ast::UnnamedFunction { .. } => false,
+        AstKind::Return(_)
+        | AstKind::Null
+        | AstKind::NumberLiteral(_)
+        | AstKind::BooleanLiteral(_)
+        | AstKind::StringLiteral(_)
+        | AstKind::ListLiteral(_)
+        | AstKind::ObjectLiteral(_)
+        | AstKind::Variable(_)
+        | AstKind::Add(_, _)
+        | AstKind::Subtract(_, _)
+        | AstKind::Multiply(_, _)
+        | AstKind::Divide(_, _)
+        | AstKind::Modulo(_, _)
+        | AstKind::Power(_, _)
+        | AstKind::UnaryMinus(_)
+        | AstKind::BooleanNegate(_)
+        | AstKind::Equality(_, _)
+        | AstKind::Inequality(_, _)
+        | AstKind::LessThan(_, _)
+        | AstKind::GreaterThan(_, _)
+        | AstKind::LessThanOrEqual(_, _)
+        | AstKind::GreaterThanOrEqual(_, _)
+        | AstKind::And(_, _)
+        | AstKind::Or(_, _)
+        | AstKind::Brackets(_)
+        | AstKind::FunctionCall { .. }
+        | AstKind::MemberAccess { .. }
+        | AstKind::Indexing { .. }
+        | AstKind::UnnamedFunction { .. } => false,
     }
 }

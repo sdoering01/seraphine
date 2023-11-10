@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     error::{EvalError, SeraphineError},
-    parser::{parse, Ast},
+    parser::{parse, Ast, AstKind},
     runtime::common::RuntimeContext,
     stdlib::{get_standard_functions, get_standard_variables},
     tokenizer::tokenize,
@@ -1124,8 +1124,8 @@ impl Evaluator {
 }
 
 pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
-    let result = match ast {
-        Ast::FunctionDefinition {
+    let result = match &ast.kind {
+        AstKind::FunctionDefinition {
             name,
             arg_names,
             body,
@@ -1139,7 +1139,7 @@ pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
             eval.set_var(name, Value::Function(func));
             NULL_VALUE
         }
-        Ast::UnnamedFunction { arg_names, body } => {
+        AstKind::UnnamedFunction { arg_names, body } => {
             let func = Function::new_user_defined_ast(
                 None,
                 arg_names.clone(),
@@ -1148,14 +1148,14 @@ pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
             )?;
             Value::Function(func)
         }
-        Ast::MemberAccess {
+        AstKind::MemberAccess {
             value: value_ast,
             member,
         } => {
             let value = evaluate(value_ast, eval)?;
             value.get_member(member)?
         }
-        Ast::Indexing {
+        AstKind::Indexing {
             value: value_ast,
             index: index_ast,
         } => {
@@ -1163,25 +1163,25 @@ pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
             let index = evaluate(index_ast, eval)?;
             value.get_index(index)?
         }
-        Ast::Lines(lines) => {
+        AstKind::Lines(lines) => {
             let mut result = NULL_VALUE;
             for line in lines {
                 result = evaluate(line, eval)?;
             }
             result
         }
-        Ast::Null => NULL_VALUE,
-        Ast::NumberLiteral(n) => Value::Number(*n),
-        Ast::BooleanLiteral(b) => Value::Bool(*b),
-        Ast::StringLiteral(s) => Value::String(s.clone()),
-        Ast::ListLiteral(values) => {
+        AstKind::Null => NULL_VALUE,
+        AstKind::NumberLiteral(n) => Value::Number(*n),
+        AstKind::BooleanLiteral(b) => Value::Bool(*b),
+        AstKind::StringLiteral(s) => Value::String(s.clone()),
+        AstKind::ListLiteral(values) => {
             let values: Vec<_> = values
                 .iter()
                 .map(|ast| evaluate(ast, eval))
                 .collect::<Result<_, _>>()?;
             Value::List(Rc::new(RefCell::new(values)))
         }
-        Ast::ObjectLiteral(key_value_pairs) => {
+        AstKind::ObjectLiteral(key_value_pairs) => {
             let mut object = BTreeMap::new();
             for (key, value) in key_value_pairs {
                 let value = evaluate(value, eval)?;
@@ -1189,49 +1189,51 @@ pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
             }
             Value::Object(Rc::new(RefCell::new(object)))
         }
-        Ast::Variable(name) => eval
+        AstKind::Variable(name) => eval
             .get_var(name)
             .ok_or_else(|| EvalError::VariableNotDefined(name.clone()))?,
-        Ast::Add(lhs, rhs) => evaluate(lhs, eval)?.add(evaluate(rhs, eval)?)?,
-        Ast::Subtract(lhs, rhs) => evaluate(lhs, eval)?.subtract(evaluate(rhs, eval)?)?,
-        Ast::Multiply(lhs, rhs) => evaluate(lhs, eval)?.multiply(evaluate(rhs, eval)?)?,
-        Ast::Divide(lhs, rhs) => evaluate(lhs, eval)?.divide(evaluate(rhs, eval)?)?,
-        Ast::Modulo(lhs, rhs) => evaluate(lhs, eval)?.modulo(evaluate(rhs, eval)?)?,
-        Ast::Power(lhs, rhs) => evaluate(lhs, eval)?.power(evaluate(rhs, eval)?)?,
-        Ast::UnaryMinus(rhs) => evaluate(rhs, eval)?.negate()?,
-        Ast::BooleanNegate(rhs) => evaluate(rhs, eval)?.bool_negate()?,
-        Ast::Equality(lhs, rhs) => evaluate(lhs, eval)?.equal(evaluate(rhs, eval)?)?,
-        Ast::Inequality(lhs, rhs) => evaluate(lhs, eval)?.unequal(evaluate(rhs, eval)?)?,
-        Ast::LessThan(lhs, rhs) => evaluate(lhs, eval)?.less_than(evaluate(rhs, eval)?)?,
-        Ast::GreaterThan(lhs, rhs) => evaluate(lhs, eval)?.greater_than(evaluate(rhs, eval)?)?,
-        Ast::LessThanOrEqual(lhs, rhs) => {
+        AstKind::Add(lhs, rhs) => evaluate(lhs, eval)?.add(evaluate(rhs, eval)?)?,
+        AstKind::Subtract(lhs, rhs) => evaluate(lhs, eval)?.subtract(evaluate(rhs, eval)?)?,
+        AstKind::Multiply(lhs, rhs) => evaluate(lhs, eval)?.multiply(evaluate(rhs, eval)?)?,
+        AstKind::Divide(lhs, rhs) => evaluate(lhs, eval)?.divide(evaluate(rhs, eval)?)?,
+        AstKind::Modulo(lhs, rhs) => evaluate(lhs, eval)?.modulo(evaluate(rhs, eval)?)?,
+        AstKind::Power(lhs, rhs) => evaluate(lhs, eval)?.power(evaluate(rhs, eval)?)?,
+        AstKind::UnaryMinus(rhs) => evaluate(rhs, eval)?.negate()?,
+        AstKind::BooleanNegate(rhs) => evaluate(rhs, eval)?.bool_negate()?,
+        AstKind::Equality(lhs, rhs) => evaluate(lhs, eval)?.equal(evaluate(rhs, eval)?)?,
+        AstKind::Inequality(lhs, rhs) => evaluate(lhs, eval)?.unequal(evaluate(rhs, eval)?)?,
+        AstKind::LessThan(lhs, rhs) => evaluate(lhs, eval)?.less_than(evaluate(rhs, eval)?)?,
+        AstKind::GreaterThan(lhs, rhs) => {
+            evaluate(lhs, eval)?.greater_than(evaluate(rhs, eval)?)?
+        }
+        AstKind::LessThanOrEqual(lhs, rhs) => {
             evaluate(lhs, eval)?.less_than_or_equal(evaluate(rhs, eval)?)?
         }
-        Ast::GreaterThanOrEqual(lhs, rhs) => {
+        AstKind::GreaterThanOrEqual(lhs, rhs) => {
             evaluate(lhs, eval)?.greater_than_or_equal(evaluate(rhs, eval)?)?
         }
-        Ast::And(lhs, rhs) => evaluate(lhs, eval)?.and(|| evaluate(rhs, eval))?,
-        Ast::Or(lhs, rhs) => evaluate(lhs, eval)?.or(|| evaluate(rhs, eval))?,
-        Ast::Brackets(inner) => evaluate(inner, eval)?,
-        Ast::Assign(name, rhs) => {
+        AstKind::And(lhs, rhs) => evaluate(lhs, eval)?.and(|| evaluate(rhs, eval))?,
+        AstKind::Or(lhs, rhs) => evaluate(lhs, eval)?.or(|| evaluate(rhs, eval))?,
+        AstKind::Brackets(inner) => evaluate(inner, eval)?,
+        AstKind::Assign(name, rhs) => {
             let rval = evaluate(rhs, eval)?;
             eval.set_var(name, rval.clone());
             NULL_VALUE
         }
-        Ast::IndexingAssign { value, index, rhs } => {
+        AstKind::IndexingAssign { value, index, rhs } => {
             let value = evaluate(value, eval)?;
             let index = evaluate(index, eval)?;
             let rval = evaluate(rhs, eval)?;
             value.set_index(index, rval.clone())?;
             NULL_VALUE
         }
-        Ast::MemberAssign { value, member, rhs } => {
+        AstKind::MemberAssign { value, member, rhs } => {
             let value = evaluate(value, eval)?;
             let rval = evaluate(rhs, eval)?;
             value.set_member(member, rval.clone())?;
             NULL_VALUE
         }
-        Ast::FunctionCall { value, args } => {
+        AstKind::FunctionCall { value, args } => {
             let val = evaluate(value, eval)?;
             let args: Vec<_> = args
                 .iter()
@@ -1239,7 +1241,7 @@ pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
                 .collect::<Result<_, _>>()?;
             val.call(eval, args)?
         }
-        Ast::IfStatement {
+        AstKind::IfStatement {
             condition,
             if_body,
             else_body,
@@ -1252,7 +1254,7 @@ pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
             }
             NULL_VALUE
         }
-        Ast::WhileLoop { condition, body } => {
+        AstKind::WhileLoop { condition, body } => {
             while evaluate(condition, eval)?.as_bool() {
                 match evaluate(body, eval) {
                     Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => continue,
@@ -1263,7 +1265,7 @@ pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
             }
             NULL_VALUE
         }
-        Ast::ForLoop {
+        AstKind::ForLoop {
             variable,
             iterable,
             body,
@@ -1280,13 +1282,13 @@ pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
             }
             NULL_VALUE
         }
-        Ast::Continue => {
+        AstKind::Continue => {
             return Err(EvalError::InternalControlFlow(ControlFlow::Continue));
         }
-        Ast::Break => {
+        AstKind::Break => {
             return Err(EvalError::InternalControlFlow(ControlFlow::Break));
         }
-        Ast::Return(expr) => {
+        AstKind::Return(expr) => {
             let val = match expr {
                 None => NULL_VALUE,
                 Some(expr) => evaluate(expr, eval)?,
