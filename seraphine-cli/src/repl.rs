@@ -245,17 +245,14 @@ impl Repl {
                             self.write_displayable(result)?;
                             self.input.clear();
                         }
-                        Err(SeraphineError::ParseError(
-                            ParseError::NoTokensLeft
-                            | ParseError::UnexpectedToken {
-                                token:
-                                    Token {
-                                        kind: TokenKind::Eof,
-                                        ..
-                                    },
-                                ..
-                            },
-                        )) => {
+                        Err(SeraphineError::ParseError(ParseError::UnexpectedToken {
+                            token:
+                                Token {
+                                    kind: TokenKind::Eof,
+                                    ..
+                                },
+                            ..
+                        })) => {
                             self.input.push('\n');
                         }
                         Err(err) => {

@@ -123,7 +123,6 @@ impl Display for OperatorKind {
 
 #[derive(Debug)]
 pub enum ParseError {
-    NoTokensLeft,
     UnexpectedToken {
         token: Token,
         expected: Option<TokenKind>,
@@ -142,7 +141,6 @@ impl Display for ParseError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use ParseError::*;
         match self {
-            NoTokensLeft => write!(f, "No tokens left to parse"),
             UnexpectedToken { token, expected } => {
                 write!(f, "Unexpected token '{:?}'", token.kind)?;
                 if let Some(expected) = expected {
@@ -160,7 +158,6 @@ impl ParseError {
     fn format(&self, input: &str, file_name: &str) -> String {
         let error = self.to_string();
         match self {
-            Self::NoTokensLeft => error,
             Self::UnexpectedToken { token, .. } => {
                 format_error(error, input, file_name, token.span.start)
             }

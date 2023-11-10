@@ -196,7 +196,9 @@ impl<'a> Parser<'a> {
         let mut lines = Vec::<Ast>::new();
         let mut want_newline_this_iteration = false;
         let end_span = loop {
-            let token = self.peek().expect("Tokens didn't contain EOF");
+            let Some(token) = self.peek() else {
+                panic_skipped_eof();
+            };
             let (line, want_newline_next_iteration) = match token.kind {
                 TokenKind::Eof => {
                     let end_span = lines.last().map(|ast| ast.span).unwrap_or(start_span);
@@ -421,7 +423,7 @@ impl<'a> Parser<'a> {
                     }),
                 }
             }
-            None => Err(ParseError::NoTokensLeft),
+            None => panic_skipped_eof(),
         }
     }
 
@@ -477,7 +479,7 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
-            None => return Err(ParseError::NoTokensLeft),
+            None => panic_skipped_eof(),
         };
         loop {
             // Don't allow newlines before LParen and LBracket to avoid confusion with expressions
@@ -585,8 +587,7 @@ impl<'a> Parser<'a> {
                         expected: Some(TokenKind::Colon),
                     })
                 }
-                // TODO: Remove `None` branch and check for EOF instead
-                None => return Err(ParseError::NoTokensLeft),
+                None => panic_skipped_eof(),
             };
             key_value_pairs.push((key.0, value));
 
@@ -875,7 +876,7 @@ impl<'a> Parser<'a> {
                     Ok(actual)
                 }
             }
-            None => Err(ParseError::NoTokensLeft),
+            None => panic_skipped_eof(),
         }
     }
 
@@ -888,7 +889,7 @@ impl<'a> Parser<'a> {
                 span,
             }) => Ok((name.to_string(), *span)),
             Some(Token { span, .. }) => Err(ParseError::ExpectedIdentifier { pos: span.start }),
-            None => Err(ParseError::NoTokensLeft),
+            None => panic_skipped_eof(),
         }
     }
 
@@ -898,4 +899,8 @@ impl<'a> Parser<'a> {
             self.next();
         }
     }
+}
+
+fn panic_skipped_eof() -> ! {
+    panic!("Tokens didn't contain EOF")
 }
