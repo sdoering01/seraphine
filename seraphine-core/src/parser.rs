@@ -797,7 +797,9 @@ impl<'a> Parser<'a> {
         // return [ <expr> ]
         let return_keyword_span = self.expect(TokenKind::Keyword(Keyword::Return))?.span;
         let (expr, span) = match self.peek_kind() {
-            Some(&TokenKind::Newline | &TokenKind::RBrace) => (None, return_keyword_span),
+            Some(&TokenKind::Newline | &TokenKind::RBrace | &TokenKind::Eof) => {
+                (None, return_keyword_span)
+            }
             _ => {
                 let expr = self.parse_expression()?;
                 let expr_span = expr.span;
