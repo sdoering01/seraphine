@@ -273,9 +273,9 @@ pub enum EvalError {
     VariableNotDefined { name: String, span: Span },
     StdlibError { error: StdlibError, span: Span },
     CallStackOverflow,
-    ContinueOutsideOfLoop,
-    BreakOutsideOfLoop,
-    InternalControlFlow(ControlFlow),
+    ContinueOutsideOfLoop(Span),
+    BreakOutsideOfLoop(Span),
+    InternalControlFlow { kind: ControlFlow, span: Span },
 }
 
 impl Display for EvalError {
@@ -287,20 +287,29 @@ impl Display for EvalError {
             }
             StdlibError { error, .. } => write!(f, "{}", error),
             CallStackOverflow => write!(f, "Call stack overflow (too many nested function calls)"),
-            ContinueOutsideOfLoop => {
+            ContinueOutsideOfLoop(_) => {
                 write!(f, "Continue statement outside of loop")
             }
-            BreakOutsideOfLoop => {
+            BreakOutsideOfLoop(_) => {
                 write!(f, "Break statement outside of loop")
             }
             // TODO: Change this once returns are allowed outside of functions
-            InternalControlFlow(ControlFlow::Return(_)) => {
+            InternalControlFlow {
+                kind: ControlFlow::Return(_),
+                ..
+            } => {
                 write!(f, "Return statement outside of function")
             }
-            InternalControlFlow(ControlFlow::Continue) => {
+            InternalControlFlow {
+                kind: ControlFlow::Continue,
+                ..
+            } => {
                 write!(f, "Continue statement outside of loop")
             }
-            InternalControlFlow(ControlFlow::Break) => {
+            InternalControlFlow {
+                kind: ControlFlow::Break,
+                ..
+            } => {
                 write!(f, "Break statement outside of loop")
             }
         }
@@ -319,6 +328,15 @@ impl EvalError {
                 span,
             } => {
                 let error = stdlib_error.to_string();
+                format_error(error, input, file_name, span.start)
+            }
+            EvalError::ContinueOutsideOfLoop(span) => {
+                format_error(error, input, file_name, span.start)
+            }
+            EvalError::BreakOutsideOfLoop(span) => {
+                format_error(error, input, file_name, span.start)
+            }
+            EvalError::InternalControlFlow { span, .. } => {
                 format_error(error, input, file_name, span.start)
             }
             _ => error,

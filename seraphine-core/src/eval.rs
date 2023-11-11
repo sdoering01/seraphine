@@ -858,13 +858,18 @@ impl Function {
                     eval.function_call_depth += 1;
                     std::mem::swap(&mut scope, &mut eval.scope);
                     let call_result = match evaluate(body, eval) {
-                        Err(EvalError::InternalControlFlow(ControlFlow::Return(val))) => Ok(val),
-                        Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => {
-                            Err(EvalError::ContinueOutsideOfLoop)
-                        }
-                        Err(EvalError::InternalControlFlow(ControlFlow::Break)) => {
-                            Err(EvalError::BreakOutsideOfLoop)
-                        }
+                        Err(EvalError::InternalControlFlow {
+                            kind: ControlFlow::Return(val),
+                            ..
+                        }) => Ok(val),
+                        Err(EvalError::InternalControlFlow {
+                            kind: ControlFlow::Continue,
+                            span,
+                        }) => Err(EvalError::ContinueOutsideOfLoop(span)),
+                        Err(EvalError::InternalControlFlow {
+                            kind: ControlFlow::Break,
+                            span,
+                        }) => Err(EvalError::BreakOutsideOfLoop(span)),
                         other => other,
                     };
                     std::mem::swap(&mut scope, &mut eval.scope);
@@ -1331,8 +1336,14 @@ pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
             AstKind::WhileLoop { condition, body } => {
                 while evaluate(condition, eval)?.as_bool() {
                     match evaluate(body, eval) {
-                        Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => continue,
-                        Err(EvalError::InternalControlFlow(ControlFlow::Break)) => break,
+                        Err(EvalError::InternalControlFlow {
+                            kind: ControlFlow::Continue,
+                            ..
+                        }) => continue,
+                        Err(EvalError::InternalControlFlow {
+                            kind: ControlFlow::Break,
+                            ..
+                        }) => break,
                         e @ Err(_) => return e,
                         Ok(_) => (),
                     }
@@ -1349,8 +1360,14 @@ pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
                 for value in iterator.borrow_mut().into_iter() {
                     eval.set_var(variable, value);
                     match evaluate(body, eval) {
-                        Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => continue,
-                        Err(EvalError::InternalControlFlow(ControlFlow::Break)) => break,
+                        Err(EvalError::InternalControlFlow {
+                            kind: ControlFlow::Continue,
+                            ..
+                        }) => continue,
+                        Err(EvalError::InternalControlFlow {
+                            kind: ControlFlow::Break,
+                            ..
+                        }) => break,
                         e @ Err(_) => return e,
                         Ok(_) => (),
                     }
@@ -1358,17 +1375,26 @@ pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
                 NULL_VALUE
             }
             AstKind::Continue => {
-                return Err(EvalError::InternalControlFlow(ControlFlow::Continue));
+                return Err(EvalError::InternalControlFlow {
+                    kind: ControlFlow::Continue,
+                    span: eval.current_span,
+                });
             }
             AstKind::Break => {
-                return Err(EvalError::InternalControlFlow(ControlFlow::Break));
+                return Err(EvalError::InternalControlFlow {
+                    kind: ControlFlow::Break,
+                    span: eval.current_span,
+                });
             }
             AstKind::Return(expr) => {
                 let val = match expr {
                     None => NULL_VALUE,
                     Some(expr) => evaluate(expr, eval)?,
                 };
-                return Err(EvalError::InternalControlFlow(ControlFlow::Return(val)));
+                return Err(EvalError::InternalControlFlow {
+                    kind: ControlFlow::Return(val),
+                    span: eval.current_span,
+                });
             }
         };
         Ok(result)
