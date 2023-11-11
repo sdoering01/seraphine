@@ -1,7 +1,7 @@
 use std::{cell::RefCell, io::BufRead, rc::Rc};
 
 use crate::{
-    error::EvalError,
+    error::StdlibError,
     eval::{print_values, SeraphineIterator, Type, Value, NULL_VALUE},
     runtime::common::RuntimeContext,
 };
@@ -10,7 +10,7 @@ pub(super) fn _set_internal_side_effect_flag(
     ctx: &mut RuntimeContext,
     _this: Option<Value>,
     _args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     ctx._internal_side_effect_flag = true;
     Ok(NULL_VALUE)
 }
@@ -19,7 +19,7 @@ pub(super) fn print(
     ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     print_values(&mut ctx.stdout, &args)?;
     ctx.stdout.flush()?;
     Ok(NULL_VALUE)
@@ -29,7 +29,7 @@ pub(super) fn println(
     ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     print_values(&mut ctx.stdout, &args)?;
     writeln!(ctx.stdout)?;
     Ok(NULL_VALUE)
@@ -39,7 +39,7 @@ pub(super) fn eprint(
     ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     print_values(&mut ctx.stderr, &args)?;
     ctx.stderr.flush()?;
     Ok(NULL_VALUE)
@@ -49,7 +49,7 @@ pub(super) fn eprintln(
     ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     print_values(&mut ctx.stderr, &args)?;
     writeln!(ctx.stderr)?;
     Ok(NULL_VALUE)
@@ -59,7 +59,7 @@ pub(super) fn read_line(
     ctx: &mut RuntimeContext,
     _this: Option<Value>,
     _args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     let mut str = String::new();
     ctx.stdin.read_line(&mut str)?;
     str.pop();
@@ -70,7 +70,7 @@ pub(super) fn to_string(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     Ok(Value::String(args[0].convert_to_string()))
 }
 
@@ -78,7 +78,7 @@ pub(super) fn parse_number(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::String)?;
     let Value::String(ref arg) = args[0] else {
         unreachable!()
@@ -91,14 +91,14 @@ pub(super) fn range(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     fn make_range(
         start: i64,
         end: i64,
         step: i64,
-    ) -> Result<Rc<RefCell<dyn SeraphineIterator>>, EvalError> {
+    ) -> Result<Rc<RefCell<dyn SeraphineIterator>>, StdlibError> {
         if step == 0 {
-            return Err(EvalError::GenericError(
+            return Err(StdlibError::GenericError(
                 "range: step cannot be 0".to_string(),
             ));
         }
@@ -126,13 +126,13 @@ pub(super) fn range(
 
     // TODO: Limit arguments to range 1..=3 in a better way
     if args.is_empty() {
-        return Err(EvalError::FunctionWrongArgAmount {
+        return Err(StdlibError::FunctionWrongArgAmount {
             name: Some("range".to_string()),
             expected: 1,
             got: args.len(),
         });
     } else if args.len() > 3 {
-        return Err(EvalError::FunctionWrongArgAmount {
+        return Err(StdlibError::FunctionWrongArgAmount {
             name: Some("range".to_string()),
             expected: 3,
             got: args.len(),
@@ -187,7 +187,7 @@ pub(super) fn is_nan(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -199,7 +199,7 @@ pub(super) fn is_infinite(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -211,7 +211,7 @@ pub(super) fn is_finite(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -223,7 +223,7 @@ pub(super) fn sin(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -235,7 +235,7 @@ pub(super) fn cos(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -247,7 +247,7 @@ pub(super) fn tan(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -259,7 +259,7 @@ pub(super) fn asin(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -271,7 +271,7 @@ pub(super) fn acos(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -283,7 +283,7 @@ pub(super) fn atan(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -295,7 +295,7 @@ pub(super) fn atan2(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     args[1].assert_type(Type::Number)?;
     let Value::Number(arg1) = args[0] else {
@@ -311,7 +311,7 @@ pub(super) fn tanh(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -323,7 +323,7 @@ pub(super) fn sinh(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -335,7 +335,7 @@ pub(super) fn cosh(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -347,7 +347,7 @@ pub(super) fn ln(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -359,7 +359,7 @@ pub(super) fn log2(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -371,7 +371,7 @@ pub(super) fn log10(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -383,7 +383,7 @@ pub(super) fn log(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     args[1].assert_type(Type::Number)?;
     let Value::Number(arg1) = args[0] else {
@@ -399,7 +399,7 @@ pub(super) fn abs(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -411,7 +411,7 @@ pub(super) fn min(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     args[1].assert_type(Type::Number)?;
     let Value::Number(arg1) = args[0] else {
@@ -427,7 +427,7 @@ pub(super) fn max(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     args[1].assert_type(Type::Number)?;
     let Value::Number(arg1) = args[0] else {
@@ -443,7 +443,7 @@ pub(super) fn floor(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -455,7 +455,7 @@ pub(super) fn ceil(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -467,7 +467,7 @@ pub(super) fn round(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -479,7 +479,7 @@ pub(super) fn sqrt(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -491,7 +491,7 @@ pub(super) fn exp(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     args[0].assert_type(Type::Number)?;
     let Value::Number(arg) = args[0] else {
         unreachable!()
@@ -503,7 +503,7 @@ pub(super) fn inspect(
     _ctx: &mut RuntimeContext,
     _this: Option<Value>,
     args: Vec<Value>,
-) -> Result<Value, EvalError> {
+) -> Result<Value, StdlibError> {
     println!("{}", args[0]);
     Ok(args[0].clone())
 }

@@ -7,7 +7,8 @@ use std::{
 };
 
 use crate::{
-    error::{EvalError, SeraphineError},
+    common::Span,
+    error::{EvalError, SeraphineError, StdlibError},
     parser::{parse, Ast, AstKind},
     runtime::common::RuntimeContext,
     stdlib::{get_standard_functions, get_standard_variables},
@@ -18,6 +19,17 @@ use crate::{
 // TODO: Find out how to increase this limit, since the stack of the main thread can overflow if
 // this is too large.
 const CALL_STACK_SIZE_LIMIT: usize = 100;
+
+// Convenience trait, so we don't have to write out the same convert call for each Stdlib Result
+trait ConvertableToEvalResult<Output> {
+    fn convert(self, span: Span) -> Result<Output, EvalError>;
+}
+
+impl<T> ConvertableToEvalResult<T> for Result<T, StdlibError> {
+    fn convert(self, span: Span) -> Result<T, EvalError> {
+        self.map_err(|error| EvalError::StdlibError { error, span })
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum ControlFlow {
@@ -166,10 +178,10 @@ impl Value {
         }
     }
 
-    pub(crate) fn assert_type(&self, expected: Type) -> Result<(), EvalError> {
+    pub(crate) fn assert_type(&self, expected: Type) -> Result<(), StdlibError> {
         let got = self.get_type();
         if got != expected {
-            return Err(EvalError::WrongType { expected, got });
+            return Err(StdlibError::WrongType { expected, got });
         }
         Ok(())
     }
@@ -194,14 +206,18 @@ impl Value {
         }
     }
 
-    pub(crate) fn call(&self, eval: &mut Evaluator, args: Vec<Value>) -> Result<Value, EvalError> {
+    pub(crate) fn call(
+        &self,
+        eval: &mut Evaluator,
+        args: Vec<Value>,
+    ) -> Result<Value, StdlibError> {
         match self {
             Value::Function(func) => {
                 let maybe_expected_args = func.get_arg_count();
                 let got_args = args.len();
                 if let Some(expected_args) = maybe_expected_args {
                     if got_args != expected_args {
-                        return Err(EvalError::FunctionWrongArgAmount {
+                        return Err(StdlibError::FunctionWrongArgAmount {
                             name: func.get_name(),
                             expected: expected_args,
                             got: got_args,
@@ -212,12 +228,12 @@ impl Value {
             }
             other => {
                 let error = format!("Cannot call value of type {}", other.get_type());
-                Err(EvalError::TypeError(error))
+                Err(StdlibError::TypeError(error))
             }
         }
     }
 
-    pub(crate) fn get_member(&self, member: &str) -> Result<Value, EvalError> {
+    pub(crate) fn get_member(&self, member: &str) -> Result<Value, StdlibError> {
         match self {
             Value::String(s) => match member {
                 "length" => Ok(Value::Number(s.len() as f64)),
@@ -281,7 +297,7 @@ impl Value {
                     );
                     Ok(Value::Function(func))
                 }
-                _ => Err(EvalError::NoSuchMember {
+                _ => Err(StdlibError::NoSuchMember {
                     r#type: Type::String,
                     member_name: member.to_string(),
                 }),
@@ -327,7 +343,7 @@ impl Value {
                             let index = *index as usize;
                             let mut list = l.borrow_mut();
                             if index >= list.len() {
-                                return Err(EvalError::IndexOutOfBounds {
+                                return Err(StdlibError::IndexOutOfBounds {
                                     index,
                                     length: list.len(),
                                 });
@@ -354,7 +370,7 @@ impl Value {
                     );
                     Ok(Value::Function(func))
                 }
-                _ => Err(EvalError::NoSuchMember {
+                _ => Err(StdlibError::NoSuchMember {
                     r#type: Type::List,
                     member_name: member.to_string(),
                 }),
@@ -368,20 +384,20 @@ impl Value {
                         v => Ok(v),
                     }
                 } else {
-                    Err(EvalError::NoSuchMember {
+                    Err(StdlibError::NoSuchMember {
                         r#type: Type::Object,
                         member_name: member.to_string(),
                     })
                 }
             }
-            _ => Err(EvalError::NoSuchMember {
+            _ => Err(StdlibError::NoSuchMember {
                 r#type: self.get_type(),
                 member_name: member.to_string(),
             }),
         }
     }
 
-    pub(crate) fn set_member(self, member: &str, value: Value) -> Result<(), EvalError> {
+    pub(crate) fn set_member(self, member: &str, value: Value) -> Result<(), StdlibError> {
         match self {
             Value::Object(o) => {
                 let mut obj = o.borrow_mut();
@@ -390,12 +406,12 @@ impl Value {
             }
             _ => {
                 let error = format!("Cannot set member of type {}", self.get_type());
-                Err(EvalError::TypeError(error))
+                Err(StdlibError::TypeError(error))
             }
         }
     }
 
-    pub(crate) fn get_index(self, idx: Value) -> Result<Value, EvalError> {
+    pub(crate) fn get_index(self, idx: Value) -> Result<Value, StdlibError> {
         match self {
             Value::List(l) => {
                 idx.assert_type(Type::Number)?;
@@ -407,7 +423,7 @@ impl Value {
                 let index = index as usize;
                 let list = l.borrow();
                 if index >= list.len() {
-                    return Err(EvalError::IndexOutOfBounds {
+                    return Err(StdlibError::IndexOutOfBounds {
                         index,
                         length: list.len(),
                     });
@@ -427,7 +443,7 @@ impl Value {
                         v => Ok(v),
                     }
                 } else {
-                    Err(EvalError::NoSuchMember {
+                    Err(StdlibError::NoSuchMember {
                         r#type: Type::Object,
                         member_name: index,
                     })
@@ -435,12 +451,12 @@ impl Value {
             }
             _ => {
                 let error = format!("Cannot index value of type {}", self.get_type());
-                Err(EvalError::TypeError(error))
+                Err(StdlibError::TypeError(error))
             }
         }
     }
 
-    pub(crate) fn set_index(self, idx: Value, value: Value) -> Result<(), EvalError> {
+    pub(crate) fn set_index(self, idx: Value, value: Value) -> Result<(), StdlibError> {
         match self {
             Value::List(l) => {
                 idx.assert_type(Type::Number)?;
@@ -452,7 +468,7 @@ impl Value {
                 let index = index as usize;
                 let mut list = l.borrow_mut();
                 if index >= list.len() {
-                    return Err(EvalError::IndexOutOfBounds {
+                    return Err(StdlibError::IndexOutOfBounds {
                         index,
                         length: list.len(),
                     });
@@ -471,23 +487,23 @@ impl Value {
             }
             _ => {
                 let error = format!("Cannot index value of type {}", self.get_type());
-                Err(EvalError::TypeError(error))
+                Err(StdlibError::TypeError(error))
             }
         }
     }
 
-    pub(crate) fn make_iterator(self) -> Result<Rc<RefCell<dyn SeraphineIterator>>, EvalError> {
+    pub(crate) fn make_iterator(self) -> Result<Rc<RefCell<dyn SeraphineIterator>>, StdlibError> {
         match self {
             Value::List(l) => Ok(Rc::new(RefCell::new(l.borrow().clone().into_iter()))),
             Value::Iterator(i) => Ok(i),
             _ => {
                 let error = format!("Cannot iterate over value of type {}", self.get_type());
-                Err(EvalError::TypeError(error))
+                Err(StdlibError::TypeError(error))
             }
         }
     }
 
-    pub(crate) fn advance_iterator(&self) -> Result<Option<Value>, EvalError> {
+    pub(crate) fn advance_iterator(&self) -> Result<Option<Value>, StdlibError> {
         match self {
             Value::Iterator(i) => Ok(i.borrow_mut().next()),
             _ => {
@@ -495,12 +511,12 @@ impl Value {
                     "Cannot advance type of {} since it is not an iterator",
                     self.get_type()
                 );
-                Err(EvalError::TypeError(error))
+                Err(StdlibError::TypeError(error))
             }
         }
     }
 
-    pub(crate) fn add(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn add(self, rhs: Self) -> Result<Value, StdlibError> {
         use Value::*;
         match (self, rhs) {
             (Number(l), Number(r)) => Ok(Number(l + r)),
@@ -511,12 +527,12 @@ impl Value {
                     l.get_type(),
                     r.get_type()
                 );
-                Err(EvalError::TypeError(error))
+                Err(StdlibError::TypeError(error))
             }
         }
     }
 
-    pub(crate) fn subtract(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn subtract(self, rhs: Self) -> Result<Value, StdlibError> {
         use Value::*;
         match (self, rhs) {
             (Number(l), Number(r)) => Ok(Number(l - r)),
@@ -526,12 +542,12 @@ impl Value {
                     l.get_type(),
                     r.get_type()
                 );
-                Err(EvalError::TypeError(error))
+                Err(StdlibError::TypeError(error))
             }
         }
     }
 
-    pub(crate) fn multiply(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn multiply(self, rhs: Self) -> Result<Value, StdlibError> {
         use Value::*;
         match (self, rhs) {
             (Number(l), Number(r)) => Ok(Number(l * r)),
@@ -541,12 +557,12 @@ impl Value {
                     l.get_type(),
                     r.get_type()
                 );
-                Err(EvalError::TypeError(error))
+                Err(StdlibError::TypeError(error))
             }
         }
     }
 
-    pub(crate) fn divide(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn divide(self, rhs: Self) -> Result<Value, StdlibError> {
         use Value::*;
         match (self, rhs) {
             (Number(l), Number(r)) => Ok(Number(l / r)),
@@ -556,12 +572,12 @@ impl Value {
                     l.get_type(),
                     r.get_type()
                 );
-                Err(EvalError::TypeError(error))
+                Err(StdlibError::TypeError(error))
             }
         }
     }
 
-    pub(crate) fn modulo(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn modulo(self, rhs: Self) -> Result<Value, StdlibError> {
         use Value::*;
         match (self, rhs) {
             (Number(l), Number(r)) => Ok(Number(l % r)),
@@ -571,12 +587,12 @@ impl Value {
                     l.get_type(),
                     r.get_type()
                 );
-                Err(EvalError::TypeError(error))
+                Err(StdlibError::TypeError(error))
             }
         }
     }
 
-    pub(crate) fn power(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn power(self, rhs: Self) -> Result<Value, StdlibError> {
         use Value::*;
         match (self, rhs) {
             (Number(l), Number(r)) => Ok(Number(l.powf(r))),
@@ -586,23 +602,23 @@ impl Value {
                     l.get_type(),
                     r.get_type()
                 );
-                Err(EvalError::TypeError(error))
+                Err(StdlibError::TypeError(error))
             }
         }
     }
 
-    pub(crate) fn negate(self) -> Result<Value, EvalError> {
+    pub(crate) fn negate(self) -> Result<Value, StdlibError> {
         use Value::*;
         match self {
             Number(l) => Ok(Number(-l)),
             _ => {
                 let error = format!("Cannot negate value of type {}", self.get_type());
-                Err(EvalError::TypeError(error))
+                Err(StdlibError::TypeError(error))
             }
         }
     }
 
-    pub(crate) fn bool_negate(self) -> Result<Value, EvalError> {
+    pub(crate) fn bool_negate(self) -> Result<Value, StdlibError> {
         Ok(Value::Bool(!self.as_bool()))
     }
 
@@ -621,15 +637,15 @@ impl Value {
         }
     }
 
-    pub(crate) fn equal(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn equal(self, rhs: Self) -> Result<Value, StdlibError> {
         Ok(Value::Bool(self.inner_equal(&rhs)))
     }
 
-    pub(crate) fn unequal(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn unequal(self, rhs: Self) -> Result<Value, StdlibError> {
         Ok(Value::Bool(!self.inner_equal(&rhs)))
     }
 
-    pub(crate) fn less_than(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn less_than(self, rhs: Self) -> Result<Value, StdlibError> {
         use Value::*;
         let lt = match (self, rhs) {
             (Number(l), Number(r)) => l < r,
@@ -640,13 +656,13 @@ impl Value {
                     l.get_type(),
                     r.get_type()
                 );
-                return Err(EvalError::TypeError(error));
+                return Err(StdlibError::TypeError(error));
             }
         };
         Ok(Bool(lt))
     }
 
-    pub(crate) fn greater_than(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn greater_than(self, rhs: Self) -> Result<Value, StdlibError> {
         use Value::*;
         let gt = match (self, rhs) {
             (Number(l), Number(r)) => l > r,
@@ -657,13 +673,13 @@ impl Value {
                     l.get_type(),
                     r.get_type()
                 );
-                return Err(EvalError::TypeError(error));
+                return Err(StdlibError::TypeError(error));
             }
         };
         Ok(Bool(gt))
     }
 
-    pub(crate) fn less_than_or_equal(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn less_than_or_equal(self, rhs: Self) -> Result<Value, StdlibError> {
         use Value::*;
         let le = match (self, rhs) {
             (Number(l), Number(r)) => l <= r,
@@ -674,13 +690,13 @@ impl Value {
                     l.get_type(),
                     r.get_type()
                 );
-                return Err(EvalError::TypeError(error));
+                return Err(StdlibError::TypeError(error));
             }
         };
         Ok(Bool(le))
     }
 
-    pub(crate) fn greater_than_or_equal(self, rhs: Self) -> Result<Value, EvalError> {
+    pub(crate) fn greater_than_or_equal(self, rhs: Self) -> Result<Value, StdlibError> {
         use Value::*;
         let ge = match (self, rhs) {
             (Number(l), Number(r)) => l >= r,
@@ -691,13 +707,18 @@ impl Value {
                     l.get_type(),
                     r.get_type()
                 );
-                return Err(EvalError::TypeError(error));
+                return Err(StdlibError::TypeError(error));
             }
         };
         Ok(Bool(ge))
     }
 
-    pub(crate) fn and(
+    pub(crate) fn and(self, rhs: Value) -> Result<Value, StdlibError> {
+        let result = self.as_bool() && rhs.as_bool();
+        Ok(Value::Bool(result))
+    }
+
+    pub(crate) fn and_lazy(
         self,
         rhs_evaluator: impl FnOnce() -> Result<Self, EvalError>,
     ) -> Result<Value, EvalError> {
@@ -705,7 +726,12 @@ impl Value {
         Ok(Value::Bool(result))
     }
 
-    pub(crate) fn or(
+    pub(crate) fn or(self, rhs: Value) -> Result<Value, StdlibError> {
+        let result = self.as_bool() || rhs.as_bool();
+        Ok(Value::Bool(result))
+    }
+
+    pub(crate) fn or_lazy(
         self,
         rhs_evaluator: impl FnOnce() -> Result<Self, EvalError>,
     ) -> Result<Value, EvalError> {
@@ -740,7 +766,8 @@ impl Function {
         func: F,
     ) -> Self
     where
-        F: Fn(&mut RuntimeContext, Option<Value>, Vec<Value>) -> Result<Value, EvalError> + 'static,
+        F: Fn(&mut RuntimeContext, Option<Value>, Vec<Value>) -> Result<Value, StdlibError>
+            + 'static,
     {
         Function {
             kind: Rc::new(FunctionKind::Builtin {
@@ -757,13 +784,13 @@ impl Function {
         arg_names: Vec<String>,
         body: Ast,
         parent_scope: Scope,
-    ) -> Result<Self, EvalError> {
+    ) -> Result<Self, StdlibError> {
         let func_name = func_name.map(|name| name.to_string());
 
         let mut arg_set = BTreeSet::new();
         for name in &arg_names {
             if !arg_set.insert(name) {
-                return Err(EvalError::DuplicateArgName {
+                return Err(StdlibError::DuplicateArgName {
                     func_name,
                     arg_name: name.clone(),
                 });
@@ -806,7 +833,7 @@ impl Function {
         }
     }
 
-    pub fn call(&self, eval: &mut Evaluator, args: Vec<Value>) -> Result<Value, EvalError> {
+    pub fn call(&self, eval: &mut Evaluator, args: Vec<Value>) -> Result<Value, StdlibError> {
         let receiver = self.receiver.as_ref().map(|r| r.as_ref().to_owned());
 
         match self.kind.as_ref() {
@@ -817,38 +844,40 @@ impl Function {
                 parent_scope,
                 ..
             } => {
-                if eval.function_call_depth >= CALL_STACK_SIZE_LIMIT - 1 {
-                    return Err(EvalError::CallStackOverflow);
-                }
-
-                let mut scope = Scope::with_parent(parent_scope);
-                if let Some(recv) = receiver {
-                    scope.set_var("this", recv);
-                }
-                for (name, value) in arg_names.iter().zip(args) {
-                    scope.set_var(name, value);
-                }
-
-                eval.function_call_depth += 1;
-                std::mem::swap(&mut scope, &mut eval.scope);
-                let call_result = match evaluate(body, eval) {
-                    Err(EvalError::InternalControlFlow(ControlFlow::Return(val))) => Ok(val),
-                    Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => {
-                        Err(EvalError::ContinueOutsideOfLoop)
+                let result = if eval.function_call_depth >= CALL_STACK_SIZE_LIMIT - 1 {
+                    Err(EvalError::CallStackOverflow)
+                } else {
+                    let mut scope = Scope::with_parent(parent_scope);
+                    if let Some(recv) = receiver {
+                        scope.set_var("this", recv);
                     }
-                    Err(EvalError::InternalControlFlow(ControlFlow::Break)) => {
-                        Err(EvalError::BreakOutsideOfLoop)
+                    for (name, value) in arg_names.iter().zip(args) {
+                        scope.set_var(name, value);
                     }
-                    other => other,
+
+                    eval.function_call_depth += 1;
+                    std::mem::swap(&mut scope, &mut eval.scope);
+                    let call_result = match evaluate(body, eval) {
+                        Err(EvalError::InternalControlFlow(ControlFlow::Return(val))) => Ok(val),
+                        Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => {
+                            Err(EvalError::ContinueOutsideOfLoop)
+                        }
+                        Err(EvalError::InternalControlFlow(ControlFlow::Break)) => {
+                            Err(EvalError::BreakOutsideOfLoop)
+                        }
+                        other => other,
+                    };
+                    std::mem::swap(&mut scope, &mut eval.scope);
+                    eval.function_call_depth -= 1;
+
+                    call_result
                 };
-                std::mem::swap(&mut scope, &mut eval.scope);
-                eval.function_call_depth -= 1;
 
-                call_result
+                result.map_err(|err| StdlibError::FunctionCall(Box::new(err)))
             }
-            FunctionKind::UserDefinedVm { .. } => Err(EvalError::GenericError(
-                "got user defined vm function in AST walking mode".to_string(),
-            )),
+            FunctionKind::UserDefinedVm { .. } => {
+                panic!("got user defined vm function in AST walking mode")
+            }
         }
     }
 
@@ -879,7 +908,7 @@ impl Function {
 
 // TODO: Replace Context with something that can be shared across AST-based evaluation and the VM
 pub(crate) type BuiltinFunctionClosure =
-    Box<dyn Fn(&mut RuntimeContext, Option<Value>, Vec<Value>) -> Result<Value, EvalError>>;
+    Box<dyn Fn(&mut RuntimeContext, Option<Value>, Vec<Value>) -> Result<Value, StdlibError>>;
 
 pub enum FunctionKind {
     Builtin {
@@ -991,6 +1020,7 @@ impl EvaluatorBuilder {
         let mut eval = Evaluator {
             scope: Scope::new(),
             function_call_depth: 0,
+            current_span: Span::default(),
             ctx: RuntimeContext::new(
                 BufReader::new(self.stdin),
                 self.stdout,
@@ -1057,6 +1087,7 @@ impl EvaluatorBuilder {
 pub struct Evaluator {
     scope: Scope,
     function_call_depth: usize,
+    current_span: Span,
     pub(crate) ctx: RuntimeContext,
 }
 
@@ -1121,186 +1152,230 @@ impl Evaluator {
     pub fn set_var(&mut self, name: impl Into<String>, val: Value) {
         self.scope.set_var(name, val);
     }
+
+    fn with_span(
+        &mut self,
+        span: Span,
+        func: impl FnOnce(&mut Evaluator) -> Result<Value, EvalError>,
+    ) -> Result<Value, EvalError> {
+        let prev_span = self.current_span;
+        self.current_span = span;
+        let ret = func(self);
+        self.current_span = prev_span;
+        ret
+    }
 }
 
 pub fn evaluate(ast: &Ast, eval: &mut Evaluator) -> Result<Value, EvalError> {
-    let result = match &ast.kind {
-        AstKind::FunctionDefinition {
-            name,
-            arg_names,
-            body,
-        } => {
-            let func = Function::new_user_defined_ast(
-                Some(name.as_str()),
-                arg_names.clone(),
-                *body.clone(),
-                eval.scope.clone(),
-            )?;
-            eval.set_var(name, Value::Function(func));
-            NULL_VALUE
-        }
-        AstKind::UnnamedFunction { arg_names, body } => {
-            let func = Function::new_user_defined_ast(
-                None,
-                arg_names.clone(),
-                *body.clone(),
-                eval.scope.clone(),
-            )?;
-            Value::Function(func)
-        }
-        AstKind::MemberAccess {
-            value: value_ast,
-            member,
-        } => {
-            let value = evaluate(value_ast, eval)?;
-            value.get_member(member)?
-        }
-        AstKind::Indexing {
-            value: value_ast,
-            index: index_ast,
-        } => {
-            let value = evaluate(value_ast, eval)?;
-            let index = evaluate(index_ast, eval)?;
-            value.get_index(index)?
-        }
-        AstKind::Block(lines) => {
-            let mut result = NULL_VALUE;
-            for line in lines {
-                result = evaluate(line, eval)?;
+    eval.with_span(ast.span, |eval| {
+        let result = match &ast.kind {
+            AstKind::FunctionDefinition {
+                name,
+                arg_names,
+                body,
+            } => {
+                let func = Function::new_user_defined_ast(
+                    Some(name.as_str()),
+                    arg_names.clone(),
+                    *body.clone(),
+                    eval.scope.clone(),
+                )
+                .convert(eval.current_span)?;
+                eval.set_var(name, Value::Function(func));
+                NULL_VALUE
             }
-            result
-        }
-        AstKind::Null => NULL_VALUE,
-        AstKind::NumberLiteral(n) => Value::Number(*n),
-        AstKind::BooleanLiteral(b) => Value::Bool(*b),
-        AstKind::StringLiteral(s) => Value::String(s.clone()),
-        AstKind::ListLiteral(values) => {
-            let values: Vec<_> = values
-                .iter()
-                .map(|ast| evaluate(ast, eval))
-                .collect::<Result<_, _>>()?;
-            Value::List(Rc::new(RefCell::new(values)))
-        }
-        AstKind::ObjectLiteral(key_value_pairs) => {
-            let mut object = BTreeMap::new();
-            for (key, value) in key_value_pairs {
+            AstKind::UnnamedFunction { arg_names, body } => {
+                let func = Function::new_user_defined_ast(
+                    None,
+                    arg_names.clone(),
+                    *body.clone(),
+                    eval.scope.clone(),
+                )
+                .convert(eval.current_span)?;
+                Value::Function(func)
+            }
+            AstKind::MemberAccess {
+                value: value_ast,
+                member,
+            } => {
+                let value = evaluate(value_ast, eval)?;
+                value.get_member(member).convert(eval.current_span)?
+            }
+            AstKind::Indexing {
+                value: value_ast,
+                index: index_ast,
+            } => {
+                let value = evaluate(value_ast, eval)?;
+                let index = evaluate(index_ast, eval)?;
+                value.get_index(index).convert(eval.current_span)?
+            }
+            AstKind::Block(lines) => {
+                let mut result = NULL_VALUE;
+                for line in lines {
+                    result = evaluate(line, eval)?;
+                }
+                result
+            }
+            AstKind::Null => NULL_VALUE,
+            AstKind::NumberLiteral(n) => Value::Number(*n),
+            AstKind::BooleanLiteral(b) => Value::Bool(*b),
+            AstKind::StringLiteral(s) => Value::String(s.clone()),
+            AstKind::ListLiteral(values) => {
+                let values = values
+                    .iter()
+                    .map(|ast| evaluate(ast, eval))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Value::List(Rc::new(RefCell::new(values)))
+            }
+            AstKind::ObjectLiteral(key_value_pairs) => {
+                let mut object = BTreeMap::new();
+                for (key, value) in key_value_pairs {
+                    let value = evaluate(value, eval)?;
+                    object.insert(key.clone(), value);
+                }
+                Value::Object(Rc::new(RefCell::new(object)))
+            }
+            AstKind::Variable(name) => {
+                eval.get_var(name)
+                    .ok_or_else(|| EvalError::VariableNotDefined {
+                        name: name.clone(),
+                        span: eval.current_span,
+                    })?
+            }
+            AstKind::Add(lhs, rhs) => evaluate(lhs, eval)?
+                .add(evaluate(rhs, eval)?)
+                .convert(eval.current_span)?,
+            AstKind::Subtract(lhs, rhs) => evaluate(lhs, eval)?
+                .subtract(evaluate(rhs, eval)?)
+                .convert(eval.current_span)?,
+            AstKind::Multiply(lhs, rhs) => evaluate(lhs, eval)?
+                .multiply(evaluate(rhs, eval)?)
+                .convert(eval.current_span)?,
+            AstKind::Divide(lhs, rhs) => evaluate(lhs, eval)?
+                .divide(evaluate(rhs, eval)?)
+                .convert(eval.current_span)?,
+            AstKind::Modulo(lhs, rhs) => evaluate(lhs, eval)?
+                .modulo(evaluate(rhs, eval)?)
+                .convert(eval.current_span)?,
+            AstKind::Power(lhs, rhs) => evaluate(lhs, eval)?
+                .power(evaluate(rhs, eval)?)
+                .convert(eval.current_span)?,
+            AstKind::UnaryMinus(rhs) => evaluate(rhs, eval)?.negate().convert(eval.current_span)?,
+            AstKind::BooleanNegate(rhs) => evaluate(rhs, eval)?
+                .bool_negate()
+                .convert(eval.current_span)?,
+            AstKind::Equality(lhs, rhs) => evaluate(lhs, eval)?
+                .equal(evaluate(rhs, eval)?)
+                .convert(eval.current_span)?,
+            AstKind::Inequality(lhs, rhs) => evaluate(lhs, eval)?
+                .unequal(evaluate(rhs, eval)?)
+                .convert(eval.current_span)?,
+            AstKind::LessThan(lhs, rhs) => evaluate(lhs, eval)?
+                .less_than(evaluate(rhs, eval)?)
+                .convert(eval.current_span)?,
+            AstKind::GreaterThan(lhs, rhs) => evaluate(lhs, eval)?
+                .greater_than(evaluate(rhs, eval)?)
+                .convert(eval.current_span)?,
+            AstKind::LessThanOrEqual(lhs, rhs) => evaluate(lhs, eval)?
+                .less_than_or_equal(evaluate(rhs, eval)?)
+                .convert(eval.current_span)?,
+            AstKind::GreaterThanOrEqual(lhs, rhs) => evaluate(lhs, eval)?
+                .greater_than_or_equal(evaluate(rhs, eval)?)
+                .convert(eval.current_span)?,
+            AstKind::And(lhs, rhs) => evaluate(lhs, eval)?.and_lazy(|| evaluate(rhs, eval))?,
+            AstKind::Or(lhs, rhs) => evaluate(lhs, eval)?.or_lazy(|| evaluate(rhs, eval))?,
+            AstKind::Brackets(inner) => evaluate(inner, eval)?,
+            AstKind::Assign(name, rhs) => {
+                let rval = evaluate(rhs, eval)?;
+                eval.set_var(name, rval.clone());
+                NULL_VALUE
+            }
+            AstKind::IndexingAssign { value, index, rhs } => {
                 let value = evaluate(value, eval)?;
-                object.insert(key.clone(), value);
+                let index = evaluate(index, eval)?;
+                let rval = evaluate(rhs, eval)?;
+                value
+                    .set_index(index, rval.clone())
+                    .convert(eval.current_span)?;
+                NULL_VALUE
             }
-            Value::Object(Rc::new(RefCell::new(object)))
-        }
-        AstKind::Variable(name) => eval
-            .get_var(name)
-            .ok_or_else(|| EvalError::VariableNotDefined(name.clone()))?,
-        AstKind::Add(lhs, rhs) => evaluate(lhs, eval)?.add(evaluate(rhs, eval)?)?,
-        AstKind::Subtract(lhs, rhs) => evaluate(lhs, eval)?.subtract(evaluate(rhs, eval)?)?,
-        AstKind::Multiply(lhs, rhs) => evaluate(lhs, eval)?.multiply(evaluate(rhs, eval)?)?,
-        AstKind::Divide(lhs, rhs) => evaluate(lhs, eval)?.divide(evaluate(rhs, eval)?)?,
-        AstKind::Modulo(lhs, rhs) => evaluate(lhs, eval)?.modulo(evaluate(rhs, eval)?)?,
-        AstKind::Power(lhs, rhs) => evaluate(lhs, eval)?.power(evaluate(rhs, eval)?)?,
-        AstKind::UnaryMinus(rhs) => evaluate(rhs, eval)?.negate()?,
-        AstKind::BooleanNegate(rhs) => evaluate(rhs, eval)?.bool_negate()?,
-        AstKind::Equality(lhs, rhs) => evaluate(lhs, eval)?.equal(evaluate(rhs, eval)?)?,
-        AstKind::Inequality(lhs, rhs) => evaluate(lhs, eval)?.unequal(evaluate(rhs, eval)?)?,
-        AstKind::LessThan(lhs, rhs) => evaluate(lhs, eval)?.less_than(evaluate(rhs, eval)?)?,
-        AstKind::GreaterThan(lhs, rhs) => {
-            evaluate(lhs, eval)?.greater_than(evaluate(rhs, eval)?)?
-        }
-        AstKind::LessThanOrEqual(lhs, rhs) => {
-            evaluate(lhs, eval)?.less_than_or_equal(evaluate(rhs, eval)?)?
-        }
-        AstKind::GreaterThanOrEqual(lhs, rhs) => {
-            evaluate(lhs, eval)?.greater_than_or_equal(evaluate(rhs, eval)?)?
-        }
-        AstKind::And(lhs, rhs) => evaluate(lhs, eval)?.and(|| evaluate(rhs, eval))?,
-        AstKind::Or(lhs, rhs) => evaluate(lhs, eval)?.or(|| evaluate(rhs, eval))?,
-        AstKind::Brackets(inner) => evaluate(inner, eval)?,
-        AstKind::Assign(name, rhs) => {
-            let rval = evaluate(rhs, eval)?;
-            eval.set_var(name, rval.clone());
-            NULL_VALUE
-        }
-        AstKind::IndexingAssign { value, index, rhs } => {
-            let value = evaluate(value, eval)?;
-            let index = evaluate(index, eval)?;
-            let rval = evaluate(rhs, eval)?;
-            value.set_index(index, rval.clone())?;
-            NULL_VALUE
-        }
-        AstKind::MemberAssign { value, member, rhs } => {
-            let value = evaluate(value, eval)?;
-            let rval = evaluate(rhs, eval)?;
-            value.set_member(member, rval.clone())?;
-            NULL_VALUE
-        }
-        AstKind::FunctionCall { value, args } => {
-            let val = evaluate(value, eval)?;
-            let args: Vec<_> = args
-                .iter()
-                .map(|ast| evaluate(ast, eval))
-                .collect::<Result<_, _>>()?;
-            val.call(eval, args)?
-        }
-        AstKind::IfStatement {
-            condition,
-            if_body,
-            else_body,
-        } => {
-            let condition = evaluate(condition, eval)?;
-            if condition.as_bool() {
-                evaluate(if_body, eval)?;
-            } else if let Some(else_body) = else_body {
-                evaluate(else_body, eval)?;
+            AstKind::MemberAssign { value, member, rhs } => {
+                let value = evaluate(value, eval)?;
+                let rval = evaluate(rhs, eval)?;
+                value
+                    .set_member(member, rval.clone())
+                    .convert(eval.current_span)?;
+                NULL_VALUE
             }
-            NULL_VALUE
-        }
-        AstKind::WhileLoop { condition, body } => {
-            while evaluate(condition, eval)?.as_bool() {
-                match evaluate(body, eval) {
-                    Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => continue,
-                    Err(EvalError::InternalControlFlow(ControlFlow::Break)) => break,
-                    e @ Err(_) => return e,
-                    Ok(_) => (),
+            AstKind::FunctionCall { value, args } => {
+                let val = evaluate(value, eval)?;
+                let args: Vec<_> = args
+                    .iter()
+                    .map(|ast| evaluate(ast, eval))
+                    .collect::<Result<_, _>>()?;
+                val.call(eval, args).convert(eval.current_span)?
+            }
+            AstKind::IfStatement {
+                condition,
+                if_body,
+                else_body,
+            } => {
+                let condition = evaluate(condition, eval)?;
+                if condition.as_bool() {
+                    evaluate(if_body, eval)?;
+                } else if let Some(else_body) = else_body {
+                    evaluate(else_body, eval)?;
                 }
+                NULL_VALUE
             }
-            NULL_VALUE
-        }
-        AstKind::ForLoop {
-            variable,
-            iterable,
-            body,
-        } => {
-            let iterable = evaluate(iterable, eval)?;
-            for value in iterable.make_iterator()?.borrow_mut().into_iter() {
-                eval.set_var(variable, value);
-                match evaluate(body, eval) {
-                    Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => continue,
-                    Err(EvalError::InternalControlFlow(ControlFlow::Break)) => break,
-                    e @ Err(_) => return e,
-                    Ok(_) => (),
+            AstKind::WhileLoop { condition, body } => {
+                while evaluate(condition, eval)?.as_bool() {
+                    match evaluate(body, eval) {
+                        Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => continue,
+                        Err(EvalError::InternalControlFlow(ControlFlow::Break)) => break,
+                        e @ Err(_) => return e,
+                        Ok(_) => (),
+                    }
                 }
+                NULL_VALUE
             }
-            NULL_VALUE
-        }
-        AstKind::Continue => {
-            return Err(EvalError::InternalControlFlow(ControlFlow::Continue));
-        }
-        AstKind::Break => {
-            return Err(EvalError::InternalControlFlow(ControlFlow::Break));
-        }
-        AstKind::Return(expr) => {
-            let val = match expr {
-                None => NULL_VALUE,
-                Some(expr) => evaluate(expr, eval)?,
-            };
-            return Err(EvalError::InternalControlFlow(ControlFlow::Return(val)));
-        }
-    };
-
-    Ok(result)
+            AstKind::ForLoop {
+                variable,
+                iterable,
+                body,
+            } => {
+                let iterable_val = evaluate(iterable, eval)?;
+                let iterator = iterable_val.make_iterator().convert(iterable.span)?;
+                for value in iterator.borrow_mut().into_iter() {
+                    eval.set_var(variable, value);
+                    match evaluate(body, eval) {
+                        Err(EvalError::InternalControlFlow(ControlFlow::Continue)) => continue,
+                        Err(EvalError::InternalControlFlow(ControlFlow::Break)) => break,
+                        e @ Err(_) => return e,
+                        Ok(_) => (),
+                    }
+                }
+                NULL_VALUE
+            }
+            AstKind::Continue => {
+                return Err(EvalError::InternalControlFlow(ControlFlow::Continue));
+            }
+            AstKind::Break => {
+                return Err(EvalError::InternalControlFlow(ControlFlow::Break));
+            }
+            AstKind::Return(expr) => {
+                let val = match expr {
+                    None => NULL_VALUE,
+                    Some(expr) => evaluate(expr, eval)?,
+                };
+                return Err(EvalError::InternalControlFlow(ControlFlow::Return(val)));
+            }
+        };
+        Ok(result)
+    })
 }
 
-pub(crate) fn print_values<W: Write>(to: &mut W, values: &[Value]) -> Result<(), EvalError> {
+pub(crate) fn print_values<W: Write>(to: &mut W, values: &[Value]) -> Result<(), StdlibError> {
     let mut str_iter = values.iter().map(|v| v.convert_to_string());
     if let Some(first) = str_iter.next() {
         write!(to, "{}", first)?;

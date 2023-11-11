@@ -7,11 +7,23 @@ use std::{
 
 use crate::{
     bytecode::{BinaryOp, Bytecode, Instruction, UnaryOp, VariableLookupTable},
-    error::VmError,
+    error::{StdlibError, VmError},
     eval::{Function, FunctionKind, Value},
     runtime::common::RuntimeContext,
     stdlib::{get_standard_functions, get_standard_variables},
 };
+
+// Convenience trait, so we don't have to write out the same convert call for each Stdlib Result
+trait ConvertableToVmResult<Output> {
+    // TODO: Add Span as argument
+    fn convert(self) -> Result<Output, VmError>;
+}
+
+impl<T> ConvertableToVmResult<T> for Result<T, StdlibError> {
+    fn convert(self) -> Result<T, VmError> {
+        self.map_err(VmError::StdlibError)
+    }
+}
 
 #[derive(Debug)]
 struct Stack {
@@ -181,8 +193,8 @@ impl Vm {
                 Instruction::UnaryOp(op) => {
                     let operand = self.stack.pop()?;
                     let result = match op {
-                        UnaryOp::Negate => operand.negate()?,
-                        UnaryOp::Not => operand.bool_negate()?,
+                        UnaryOp::Negate => operand.negate().convert()?,
+                        UnaryOp::Not => operand.bool_negate().convert()?,
                     };
                     self.stack.push(result);
                 }
@@ -190,22 +202,22 @@ impl Vm {
                     let rhs = self.stack.pop()?;
                     let lhs = self.stack.pop()?;
                     let result = match op {
-                        BinaryOp::Add => lhs.add(rhs)?,
-                        BinaryOp::Subtract => lhs.subtract(rhs)?,
-                        BinaryOp::Multiply => lhs.multiply(rhs)?,
-                        BinaryOp::Divide => lhs.divide(rhs)?,
-                        BinaryOp::Modulo => lhs.modulo(rhs)?,
-                        BinaryOp::Power => lhs.power(rhs)?,
-                        BinaryOp::Equal => lhs.equal(rhs)?,
-                        BinaryOp::Unequal => lhs.unequal(rhs)?,
-                        BinaryOp::LessThan => lhs.less_than(rhs)?,
-                        BinaryOp::GreaterThan => lhs.greater_than(rhs)?,
-                        BinaryOp::LessThanOrEqual => lhs.less_than_or_equal(rhs)?,
-                        BinaryOp::GreaterThanOrEqual => lhs.greater_than_or_equal(rhs)?,
+                        BinaryOp::Add => lhs.add(rhs).convert()?,
+                        BinaryOp::Subtract => lhs.subtract(rhs).convert()?,
+                        BinaryOp::Multiply => lhs.multiply(rhs).convert()?,
+                        BinaryOp::Divide => lhs.divide(rhs).convert()?,
+                        BinaryOp::Modulo => lhs.modulo(rhs).convert()?,
+                        BinaryOp::Power => lhs.power(rhs).convert()?,
+                        BinaryOp::Equal => lhs.equal(rhs).convert()?,
+                        BinaryOp::Unequal => lhs.unequal(rhs).convert()?,
+                        BinaryOp::LessThan => lhs.less_than(rhs).convert()?,
+                        BinaryOp::GreaterThan => lhs.greater_than(rhs).convert()?,
+                        BinaryOp::LessThanOrEqual => lhs.less_than_or_equal(rhs).convert()?,
+                        BinaryOp::GreaterThanOrEqual => lhs.greater_than_or_equal(rhs).convert()?,
                         // TODO: Short-circuiting with jumps
-                        BinaryOp::And => lhs.and(|| Ok(rhs))?,
+                        BinaryOp::And => lhs.and(rhs).convert()?,
                         // TODO: Short-circuiting with jumps
-                        BinaryOp::Or => lhs.or(|| Ok(rhs))?,
+                        BinaryOp::Or => lhs.or(rhs).convert()?,
                     };
                     self.stack.push(result);
                 }
@@ -258,21 +270,21 @@ impl Vm {
                 Instruction::GetIndex => {
                     let index = self.stack.pop()?;
                     let value = self.stack.pop()?;
-                    let result = value.get_index(index)?;
+                    let result = value.get_index(index).convert()?;
                     self.stack.push(result);
                 }
                 Instruction::SetIndex => {
                     let rhs = self.stack.pop()?;
                     let index = self.stack.pop()?;
                     let value = self.stack.pop()?;
-                    value.set_index(index, rhs)?;
+                    value.set_index(index, rhs).convert()?;
                 }
                 Instruction::GetMember => {
                     let Value::String(member) = self.stack.pop()? else {
                         unreachable!("corrupt bytecode -- non-string member")
                     };
                     let value = self.stack.pop()?;
-                    let result = value.get_member(&member)?;
+                    let result = value.get_member(&member).convert()?;
                     self.stack.push(result);
                 }
                 Instruction::SetMember => {
@@ -281,7 +293,7 @@ impl Vm {
                         unreachable!("corrupt bytecode -- non-string member")
                     };
                     let value = self.stack.pop()?;
-                    value.set_member(&member, rhs)?;
+                    value.set_member(&member, rhs).convert()?;
                 }
                 Instruction::Jump(dest) => {
                     self.instruction_pointer = *dest;
@@ -364,7 +376,7 @@ impl Vm {
                             // TODO: Create CallStackItem, when runtime error messages with stack
                             // trace are implemented
 
-                            let val = rust_func(&mut self.ctx, receiver, args)?;
+                            let val = rust_func(&mut self.ctx, receiver, args).convert()?;
                             self.stack.push(val);
                         }
                         FunctionKind::UserDefinedVm {
@@ -417,11 +429,11 @@ impl Vm {
                 }
                 Instruction::MakeIterator => {
                     let value = self.stack.pop()?;
-                    let iterator = value.make_iterator()?;
+                    let iterator = value.make_iterator().convert()?;
                     self.stack.push(Value::Iterator(iterator));
                 }
                 Instruction::AdvanceIteratorJumpIfDrained(dest) => {
-                    match self.stack.peek_mut()?.advance_iterator()? {
+                    match self.stack.peek_mut()?.advance_iterator().convert()? {
                         Some(value) => self.stack.push(value),
                         None => {
                             self.instruction_pointer = *dest;

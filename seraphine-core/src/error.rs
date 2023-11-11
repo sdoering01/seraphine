@@ -1,10 +1,10 @@
 use std::{
-    fmt::{self, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     io,
 };
 
 use crate::{
-    common::Pos,
+    common::{Pos, Span},
     eval::{ControlFlow, Type},
     tokenizer::{Operator, Token, TokenKind},
 };
@@ -39,6 +39,7 @@ impl SeraphineError {
         match self {
             TokenizeError(e) => e.format(input, file_name),
             ParseError(e) => e.format(input, file_name),
+            EvalError(e) => e.format(input, file_name),
             e => e.to_string(),
         }
     }
@@ -58,10 +59,7 @@ impl From<ParseError> for SeraphineError {
 
 impl From<EvalError> for SeraphineError {
     fn from(e: EvalError) -> Self {
-        match e {
-            EvalError::Io(e) => Self::IoError(e),
-            _ => Self::EvalError(e),
-        }
+        Self::EvalError(e)
     }
 }
 
@@ -167,10 +165,13 @@ impl ParseError {
     }
 }
 
+pub trait RuntimeError: Display + Debug {}
+impl RuntimeError for EvalError {}
+impl RuntimeError for VmError {}
+
 #[derive(Debug)]
-pub enum EvalError {
+pub enum StdlibError {
     GenericError(String),
-    VariableNotDefined(String),
     FunctionWrongArgAmount {
         name: Option<String>,
         expected: usize,
@@ -180,42 +181,39 @@ pub enum EvalError {
         func_name: Option<String>,
         arg_name: String,
     },
-    WrongType {
-        expected: Type,
-        got: Type,
-    },
     NoSuchMember {
         r#type: Type,
         member_name: String,
+    },
+    TypeError(String),
+    WrongType {
+        expected: Type,
+        got: Type,
     },
     IndexOutOfBounds {
         index: usize,
         length: usize,
     },
-    TypeError(String),
-    CallStackOverflow,
-    ContinueOutsideOfLoop,
-    BreakOutsideOfLoop,
-    InternalControlFlow(ControlFlow),
+    FunctionCall(Box<dyn RuntimeError>),
     Io(io::Error),
 }
 
-impl From<io::Error> for EvalError {
+impl From<io::Error> for StdlibError {
     fn from(e: io::Error) -> Self {
         Self::Io(e)
     }
 }
 
-impl Display for EvalError {
+impl Display for StdlibError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use EvalError::*;
+        use StdlibError::*;
         match self {
-            GenericError(msg) => write!(f, "{}", msg),
-            VariableNotDefined(name) => write!(f, "Variable with name '{}' is not defined", name),
+            GenericError(e) => write!(f, "{}", e),
             FunctionWrongArgAmount {
                 name,
                 expected,
                 got,
+                ..
             } => {
                 match name {
                     Some(name) => write!(f, "Function '{}'", name)?,
@@ -230,6 +228,7 @@ impl Display for EvalError {
             DuplicateArgName {
                 func_name,
                 arg_name,
+                ..
             } => {
                 match func_name {
                     Some(name) => write!(f, "Function '{}'", name)?,
@@ -237,18 +236,20 @@ impl Display for EvalError {
                 };
                 write!(f, " has duplicate argument name '{}'", arg_name)
             }
+            NoSuchMember {
+                r#type: t,
+                member_name,
+                ..
+            } => {
+                write!(f, "Type '{}' has no member named '{}'", t, member_name)
+            }
+            TypeError(e) => write!(f, "{}", e),
             WrongType { expected, got } => {
                 write!(
                     f,
                     "Expected value of type '{}' but got value of type ‘{}' instead",
                     expected, got
                 )
-            }
-            NoSuchMember {
-                r#type: t,
-                member_name,
-            } => {
-                write!(f, "Type '{}' has no member named '{}'", t, member_name)
             }
             IndexOutOfBounds { index, length } => {
                 write!(
@@ -257,7 +258,34 @@ impl Display for EvalError {
                     index, length
                 )
             }
-            TypeError(e) => write!(f, "{}", e),
+            FunctionCall(err) => {
+                write!(f, "{}", err)
+            }
+            Io(e) => {
+                write!(f, "IO error: {}", e)
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum EvalError {
+    VariableNotDefined { name: String, span: Span },
+    StdlibError { error: StdlibError, span: Span },
+    CallStackOverflow,
+    ContinueOutsideOfLoop,
+    BreakOutsideOfLoop,
+    InternalControlFlow(ControlFlow),
+}
+
+impl Display for EvalError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use EvalError::*;
+        match self {
+            VariableNotDefined { name, .. } => {
+                write!(f, "Variable with name '{}' is not defined", name)
+            }
+            StdlibError { error, .. } => write!(f, "{}", error),
             CallStackOverflow => write!(f, "Call stack overflow (too many nested function calls)"),
             ContinueOutsideOfLoop => {
                 write!(f, "Continue statement outside of loop")
@@ -275,31 +303,41 @@ impl Display for EvalError {
             InternalControlFlow(ControlFlow::Break) => {
                 write!(f, "Break statement outside of loop")
             }
-            Io(e) => {
-                write!(f, "IO error: {}", e)
+        }
+    }
+}
+
+impl EvalError {
+    fn format(&self, input: &str, file_name: &str) -> String {
+        let error = self.to_string();
+        match self {
+            EvalError::VariableNotDefined { span, .. } => {
+                format_error(error, input, file_name, span.start)
             }
+            EvalError::StdlibError {
+                error: stdlib_error,
+                span,
+            } => {
+                let error = stdlib_error.to_string();
+                format_error(error, input, file_name, span.start)
+            }
+            _ => error,
         }
     }
 }
 
 #[derive(Debug)]
 pub enum VmError {
-    EvalError(EvalError),
+    StdlibError(StdlibError),
     StackUnderflow,
     UndefinedVariable(String),
-}
-
-impl From<EvalError> for VmError {
-    fn from(e: EvalError) -> Self {
-        Self::EvalError(e)
-    }
 }
 
 impl Display for VmError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use VmError::*;
         match self {
-            EvalError(e) => write!(f, "{}", e),
+            StdlibError(e) => write!(f, "{}", e),
             StackUnderflow => write!(f, "Stack underflow"),
             UndefinedVariable(name) => write!(f, "Variable '{}' is not defined", name),
         }
