@@ -256,7 +256,11 @@ impl Repl {
                             self.input.push('\n');
                         }
                         Err(err) => {
-                            let formatted_err = err.format(&self.input, "<repl>");
+                            // We can't yet format the error with traceback, since we treat each
+                            // input separately. Thus, the formatter doesn't have access to the
+                            // previous inputs and produces bogus output or even fails when trying
+                            // to format lines from previous inputs.
+                            let formatted_err = err.format(&self.input, "<repl>", false);
                             self.write_error(formatted_err)?;
                             self.input.clear();
                         }

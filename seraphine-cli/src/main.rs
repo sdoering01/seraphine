@@ -61,7 +61,7 @@ pub fn main() {
                 eprintln!(
                     "{}{}{}",
                     color::Fg(color::Red),
-                    e.format(&code, input_file),
+                    e.format(&code, input_file, true),
                     color::Fg(color::Reset)
                 );
                 process::exit(1);

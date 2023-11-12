@@ -9,6 +9,17 @@ use crate::{
     tokenizer::{Operator, Token, TokenKind},
 };
 
+pub trait FormattableWithContext: Display {
+    fn error_context(&self, input: &str, file_name: &str) -> Option<ErrorContext>;
+
+    fn format(&self, input: &str, file_name: &str, _with_traceback: bool) -> String {
+        match Self::error_context(self, input, file_name) {
+            Some(error_ctx) => format_error(self.to_string(), error_ctx),
+            None => self.to_string(),
+        }
+    }
+}
+
 #[derive(Debug)]
 // Clippy warns that the Error suffix should be removed, but it makes sense here
 #[allow(clippy::enum_variant_names)]
@@ -34,13 +45,13 @@ impl Display for SeraphineError {
 }
 
 impl SeraphineError {
-    pub fn format(&self, input: &str, file_name: &str) -> String {
-        use SeraphineError::*;
+    pub fn format(&self, input: &str, file_name: &str, with_traceback: bool) -> String {
         match self {
-            TokenizeError(e) => e.format(input, file_name),
-            ParseError(e) => e.format(input, file_name),
-            EvalError(e) => e.format(input, file_name),
-            e => e.to_string(),
+            SeraphineError::TokenizeError(e) => e.format(input, file_name, with_traceback),
+            SeraphineError::ParseError(e) => e.format(input, file_name, with_traceback),
+            SeraphineError::EvalError(e) => e.format(input, file_name, with_traceback),
+            SeraphineError::VmError(e) => e.format(input, file_name, with_traceback),
+            SeraphineError::IoError(e) => e.to_string(),
         }
     }
 }
@@ -93,13 +104,14 @@ impl Display for TokenizeError {
     }
 }
 
-impl TokenizeError {
-    fn format(&self, input: &str, file_name: &str) -> String {
-        let error = self.to_string();
+impl FormattableWithContext for TokenizeError {
+    fn error_context(&self, input: &str, file_name: &str) -> Option<ErrorContext> {
         match self {
-            Self::UnexpectedChar { pos, .. } => format_error(error, input, file_name, *pos),
-            Self::MalformedNumber { pos, .. } => format_error(error, input, file_name, *pos),
-            Self::UnterminatedString { pos } => format_error(error, input, file_name, *pos),
+            TokenizeError::UnexpectedChar { pos, .. }
+            | TokenizeError::MalformedNumber { pos, .. }
+            | TokenizeError::UnterminatedString { pos } => {
+                Some(error_pos_to_error_context(input, file_name, *pos))
+            }
         }
     }
 }
@@ -152,22 +164,54 @@ impl Display for ParseError {
     }
 }
 
-impl ParseError {
-    fn format(&self, input: &str, file_name: &str) -> String {
-        let error = self.to_string();
+impl FormattableWithContext for ParseError {
+    fn error_context(&self, input: &str, file_name: &str) -> Option<ErrorContext> {
         match self {
-            Self::UnexpectedToken { token, .. } => {
-                format_error(error, input, file_name, token.span.start)
+            ParseError::UnexpectedToken {
+                token:
+                    Token {
+                        span: Span { start: pos, .. },
+                        ..
+                    },
+                ..
             }
-            Self::ExpectedIdentifier { pos } => format_error(error, input, file_name, *pos),
-            Self::InvalidOperator { pos, .. } => format_error(error, input, file_name, *pos),
+            | ParseError::ExpectedIdentifier { pos }
+            | ParseError::InvalidOperator { pos, .. } => {
+                Some(error_pos_to_error_context(input, file_name, *pos))
+            }
         }
     }
 }
 
-pub trait RuntimeError: Display + Debug {}
-impl RuntimeError for EvalError {}
-impl RuntimeError for VmError {}
+pub trait RuntimeError: Display + Debug + FormattableWithContext {
+    fn push_traceback(&self, traceback: &mut Vec<ErrorContext>, input: &str, file_name: &str);
+}
+
+impl RuntimeError for EvalError {
+    fn push_traceback(&self, trackback: &mut Vec<ErrorContext>, input: &str, file_name: &str) {
+        if let Some(error_ctx) = self.error_context(input, file_name) {
+            trackback.push(error_ctx);
+        }
+
+        if let EvalError::StdlibError {
+            error: StdlibError::FunctionCall(error),
+            ..
+        } = self
+        {
+            error.push_traceback(trackback, input, file_name);
+        }
+    }
+}
+
+impl RuntimeError for VmError {
+    fn push_traceback(&self, traceback: &mut Vec<ErrorContext>, input: &str, file_name: &str) {
+        if let Some(error_ctx) = self.error_context(input, file_name) {
+            traceback.push(error_ctx);
+        }
+
+        // TODO: Handle StdlibError::FunctionCall for traceback
+    }
+}
 
 #[derive(Debug)]
 pub enum StdlibError {
@@ -316,30 +360,67 @@ impl Display for EvalError {
     }
 }
 
-impl EvalError {
-    fn format(&self, input: &str, file_name: &str) -> String {
-        let error = self.to_string();
+impl FormattableWithContext for EvalError {
+    fn error_context(&self, input: &str, file_name: &str) -> Option<ErrorContext> {
         match self {
-            EvalError::VariableNotDefined { span, .. } => {
-                format_error(error, input, file_name, span.start)
+            EvalError::VariableNotDefined { span, .. }
+            | EvalError::StdlibError { span, .. }
+            | EvalError::ContinueOutsideOfLoop(span)
+            | EvalError::BreakOutsideOfLoop(span)
+            | EvalError::InternalControlFlow { span, .. } => {
+                Some(error_pos_to_error_context(input, file_name, span.start))
+            }
+            EvalError::CallStackOverflow => None,
+        }
+    }
+
+    fn format(&self, input: &str, file_name: &str, with_traceback: bool) -> String {
+        match self {
+            EvalError::StdlibError {
+                error: StdlibError::FunctionCall(inner_error),
+                span,
+            } if with_traceback => {
+                let mut traceback = vec![error_pos_to_error_context(input, file_name, span.start)];
+                inner_error.push_traceback(&mut traceback, input, file_name);
+
+                let mut formatted_error = String::new();
+                formatted_error.push_str("Traceback\n");
+                let padding = 2;
+                for error_ctx in traceback {
+                    for _ in 0..padding {
+                        formatted_error.push(' ');
+                    }
+                    formatted_error.push_str(&format_pos(
+                        &error_ctx.file_name,
+                        error_ctx.line_num,
+                        error_ctx.column_num,
+                    ));
+                    formatted_error.push('\n');
+                    formatted_error.push_str(&highlight_pos(
+                        &error_ctx.line,
+                        error_ctx.line_num,
+                        error_ctx.column_num,
+                        padding,
+                    ));
+                    formatted_error.push('\n');
+                }
+                formatted_error.push_str(&self.to_string());
+
+                formatted_error
             }
             EvalError::StdlibError {
-                error: stdlib_error,
+                error: StdlibError::FunctionCall(_),
                 span,
             } => {
-                let error = stdlib_error.to_string();
-                format_error(error, input, file_name, span.start)
+                let error_ctx = error_pos_to_error_context(input, file_name, span.start);
+                let mut formatted_error = format_error(self.to_string(), error_ctx);
+                formatted_error.push_str("\nTraceback omitted");
+                formatted_error
             }
-            EvalError::ContinueOutsideOfLoop(span) => {
-                format_error(error, input, file_name, span.start)
-            }
-            EvalError::BreakOutsideOfLoop(span) => {
-                format_error(error, input, file_name, span.start)
-            }
-            EvalError::InternalControlFlow { span, .. } => {
-                format_error(error, input, file_name, span.start)
-            }
-            _ => error,
+            _ => match self.error_context(input, file_name) {
+                Some(error_ctx) => format_error(self.to_string(), error_ctx),
+                None => self.to_string(),
+            },
         }
     }
 }
@@ -362,13 +443,21 @@ impl Display for VmError {
     }
 }
 
-struct ErrorContext {
+impl FormattableWithContext for VmError {
+    fn error_context(&self, _input: &str, _file_name: &str) -> Option<ErrorContext> {
+        // TODO: Implement this
+        None
+    }
+}
+
+pub struct ErrorContext {
+    file_name: String,
     line_num: usize,
     column_num: usize,
     line: String,
 }
 
-fn error_pos_to_error_context(input: &str, input_pos: Pos) -> Option<ErrorContext> {
+fn error_pos_to_error_context(input: &str, file_name: &str, input_pos: Pos) -> ErrorContext {
     let mut line_num = 0;
     let mut column_num = 0;
     let mut line_chars = Vec::new();
@@ -377,7 +466,12 @@ fn error_pos_to_error_context(input: &str, input_pos: Pos) -> Option<ErrorContex
     for _ in 0..input_pos {
         let c = chars.next();
         match c {
-            None => return None,
+            // TODO: Replace with Result (e.g. with new error type FormatError)
+            None => panic!(
+                "trying to get error context for position {} that is outside of input of length {}",
+                input_pos,
+                input.len()
+            ),
             // TODO: Handle "\r\n" once tokenizer can handle it
             Some('\n') => {
                 line_num += 1;
@@ -395,21 +489,30 @@ fn error_pos_to_error_context(input: &str, input_pos: Pos) -> Option<ErrorContex
         .take_while(|c| c != &'\n')
         .for_each(|c| line_chars.push(c));
 
-    Some(ErrorContext {
+    ErrorContext {
+        file_name: file_name.to_string(),
         line_num,
         column_num,
         line: line_chars.into_iter().collect(),
-    })
+    }
 }
 
-fn highlight_pos(line: &str, line_num: usize, column_num: usize) -> String {
+fn highlight_pos(line: &str, line_num: usize, column_num: usize, pad_start: usize) -> String {
     let one_based_line_num = line_num + 1;
     let one_based_line_num_string = one_based_line_num.to_string();
     let delimiter = " | ";
 
-    let mut error_string = format!("{}{}{}\n", one_based_line_num_string, delimiter, line);
+    let mut padding_start = String::new();
+    for _ in 0..pad_start {
+        padding_start.push(' ');
+    }
+
+    let mut error_string = format!(
+        "{}{}{}{}\n",
+        padding_start, one_based_line_num_string, delimiter, line
+    );
     let padding = one_based_line_num_string.len() + delimiter.len() + column_num;
-    for _ in 0..padding {
+    for _ in 0..(pad_start + padding) {
         error_string.push(' ');
     }
     error_string.push('^');
@@ -420,32 +523,22 @@ fn format_pos(file_name: &str, line_num: usize, column_num: usize) -> String {
     format!("{}:{}:{}", file_name, line_num + 1, column_num + 1)
 }
 
-fn format_error(
-    error_message_prefix: impl Into<String>,
-    input: &str,
-    file_name: &str,
-    pos: Pos,
-) -> String {
+pub fn format_error(error_message_prefix: impl Into<String>, error_ctx: ErrorContext) -> String {
     let mut error_message = error_message_prefix.into();
-    match error_pos_to_error_context(input, pos) {
-        Some(ErrorContext {
-            line_num,
-            column_num,
-            line,
-        }) => {
-            error_message.push_str(&format!(
-                " at {}\n",
-                format_pos(file_name, line_num, column_num)
-            ));
-            error_message.push_str(&highlight_pos(&line, line_num, column_num));
-        }
-        None => {
-            error_message.push_str(&format!(
-                " at position {} which is outside of the input",
-                pos
-            ));
-        }
-    }
+    error_message.push_str(&format!(
+        " at {}\n",
+        format_pos(
+            &error_ctx.file_name,
+            error_ctx.line_num,
+            error_ctx.column_num
+        )
+    ));
+    error_message.push_str(&highlight_pos(
+        &error_ctx.line,
+        error_ctx.line_num,
+        error_ctx.column_num,
+        0,
+    ));
     error_message
 }
 
@@ -461,7 +554,8 @@ mod tests {
             "}\n",
             "42 + error_here\n"
         );
-        let got_error = format_error("A test error occured", input, "test_file.sr", 40);
+        let error_ctx = error_pos_to_error_context(input, "test_file.sr", 40);
+        let got_error = format_error("A test error occured", error_ctx);
         let want_error = concat!(
             "A test error occured at test_file.sr:4:6\n",
             "4 | 42 + error_here\n",
