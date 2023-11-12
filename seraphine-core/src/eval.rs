@@ -128,22 +128,16 @@ impl EvaluatorBuilder {
         eval
     }
 
-    // TODO: Remove `#[allow(unused)]` once this is used outside of tests
-    #[allow(unused)]
     pub fn stdin(mut self, stdin: impl Read + 'static) -> Self {
         self.stdin = Box::new(stdin);
         self
     }
 
-    // TODO: Remove `#[allow(unused)]` once this is used outside of tests
-    #[allow(unused)]
     pub fn stdout(mut self, stdout: impl Write + 'static) -> Self {
         self.stdout = Box::new(stdout);
         self
     }
 
-    // TODO: Remove `#[allow(unused)]` once this is used outside of tests
-    #[allow(unused)]
     pub fn stderr(mut self, stderr: impl Write + 'static) -> Self {
         self.stderr = Box::new(stderr);
         self
@@ -158,15 +152,11 @@ impl EvaluatorBuilder {
         self
     }
 
-    // TODO: Remove `#[allow(unused)]` once this is used outside of tests
-    #[allow(unused)]
     pub fn standard_variables(mut self, b: bool) -> Self {
         self.standard_variables = b;
         self
     }
 
-    // TODO: Remove `#[allow(unused)]` once this is used outside of tests
-    #[allow(unused)]
     pub fn standard_functions(mut self, b: bool) -> Self {
         self.standard_functions = b;
         self

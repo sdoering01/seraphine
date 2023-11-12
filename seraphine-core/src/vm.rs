@@ -214,9 +214,7 @@ impl Vm {
                         BinaryOp::GreaterThan => lhs.greater_than(rhs).convert()?,
                         BinaryOp::LessThanOrEqual => lhs.less_than_or_equal(rhs).convert()?,
                         BinaryOp::GreaterThanOrEqual => lhs.greater_than_or_equal(rhs).convert()?,
-                        // TODO: Short-circuiting with jumps
                         BinaryOp::And => lhs.and(rhs).convert()?,
-                        // TODO: Short-circuiting with jumps
                         BinaryOp::Or => lhs.or(rhs).convert()?,
                     };
                     self.stack.push(result);
@@ -363,11 +361,10 @@ impl Vm {
                     }
 
                     match func.kind.as_ref() {
-                        // TODO: Replace with Result
                         FunctionKind::UserDefinedAst { .. } => {
+                            // TODO: Replace with Result
                             panic!("cannot call user defined ast functions in vm")
                         }
-                        // TODO: Implement this without `eval::Context`
                         FunctionKind::Builtin {
                             func: rust_func, ..
                         } => {

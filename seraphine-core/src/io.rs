@@ -72,8 +72,6 @@ impl ChannelReader {
         Self { receiver }
     }
 
-    // TODO: Remove `#[allow(unused)]` once this is used outside of tests
-    #[allow(unused)]
     pub fn read_available_to_string(&mut self) -> String {
         let mut buf = Vec::new();
         while let Ok(b) = self.receiver.try_recv() {
@@ -86,8 +84,6 @@ impl ChannelReader {
 /// Creates a Reader and a Writer that implement [`std::io::Read`] and [`std::io::Write`]
 /// respectively. These two objects are linked by a channel, meaning that everything written into
 /// the Writer comes out of the Reader.
-// TODO: Remove `#[allow(unused)]` once this is used outside of tests
-#[allow(unused)]
 pub fn create_channel_reader_writer() -> (ChannelReader, ChannelWriter) {
     let (tx, rx) = mpsc::channel();
     (ChannelReader::new(rx), ChannelWriter::new(tx))
