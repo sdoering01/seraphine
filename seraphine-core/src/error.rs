@@ -184,32 +184,42 @@ impl FormattableWithContext for ParseError {
 }
 
 pub trait RuntimeError: Display + Debug + FormattableWithContext {
-    fn push_traceback(&self, traceback: &mut Vec<ErrorContext>, input: &str, file_name: &str);
+    fn cause(&self) -> Option<&dyn RuntimeError>;
+
+    fn traceback(&self, input: &str, file_name: &str) -> Vec<ErrorContext> {
+        let mut traceback = Vec::new();
+        if let Some(error_ctx) = self.error_context(input, file_name) {
+            traceback.push(error_ctx);
+        }
+
+        let mut maybe_error = self.cause();
+        while let Some(error) = maybe_error {
+            if let Some(error_ctx) = error.error_context(input, file_name) {
+                traceback.push(error_ctx);
+            }
+            maybe_error = error.cause();
+        }
+
+        traceback
+    }
 }
 
 impl RuntimeError for EvalError {
-    fn push_traceback(&self, trackback: &mut Vec<ErrorContext>, input: &str, file_name: &str) {
-        if let Some(error_ctx) = self.error_context(input, file_name) {
-            trackback.push(error_ctx);
-        }
-
-        if let EvalError::StdlibError {
-            error: StdlibError::FunctionCall(error),
-            ..
-        } = self
-        {
-            error.push_traceback(trackback, input, file_name);
+    fn cause(&self) -> Option<&dyn RuntimeError> {
+        match self {
+            EvalError::StdlibError {
+                error: StdlibError::FunctionCall(error),
+                ..
+            } => Some(error.as_ref()),
+            _ => None,
         }
     }
 }
 
 impl RuntimeError for VmError {
-    fn push_traceback(&self, traceback: &mut Vec<ErrorContext>, input: &str, file_name: &str) {
-        if let Some(error_ctx) = self.error_context(input, file_name) {
-            traceback.push(error_ctx);
-        }
-
+    fn cause(&self) -> Option<&dyn RuntimeError> {
         // TODO: Handle StdlibError::FunctionCall for traceback
+        None
     }
 }
 
@@ -377,11 +387,10 @@ impl FormattableWithContext for EvalError {
     fn format(&self, input: &str, file_name: &str, with_traceback: bool) -> String {
         match self {
             EvalError::StdlibError {
-                error: StdlibError::FunctionCall(inner_error),
-                span,
+                error: StdlibError::FunctionCall(_),
+                ..
             } if with_traceback => {
-                let mut traceback = vec![error_pos_to_error_context(input, file_name, span.start)];
-                inner_error.push_traceback(&mut traceback, input, file_name);
+                let traceback = self.traceback(input, file_name);
 
                 let mut formatted_error = String::new();
                 formatted_error.push_str("Traceback\n");
