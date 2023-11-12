@@ -5,8 +5,9 @@ use std::{
 
 use crate::{
     common::{Pos, Span},
-    eval::{ControlFlow, Type},
+    eval::ControlFlow,
     tokenizer::{Operator, Token, TokenKind},
+    value::Type,
 };
 
 pub trait FormattableWithContext: Display {

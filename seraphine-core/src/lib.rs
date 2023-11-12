@@ -6,6 +6,7 @@ pub mod parser;
 pub mod runtime;
 pub mod stdlib;
 pub mod tokenizer;
+pub mod value;
 pub mod vm;
 
 mod common;
@@ -17,12 +18,13 @@ mod tests {
 
     use crate::{
         error::SeraphineError,
-        eval::{Evaluator, Function, Value},
+        eval::Evaluator,
         io,
         macros::{
             assert_eq_bool, assert_eq_num, assert_eq_num_list, assert_eq_num_object, assert_eq_str,
             assert_null,
         },
+        value::{Function, Value},
     };
 
     fn eval_str(s: &str) -> Result<Value, SeraphineError> {

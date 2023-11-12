@@ -2,8 +2,8 @@ mod functions;
 
 use crate::{
     error::StdlibError,
-    eval::{Function, Value},
     runtime::common::RuntimeContext,
+    value::{Function, Value},
 };
 
 pub(crate) fn get_standard_variables() -> Vec<(&'static str, Value)> {

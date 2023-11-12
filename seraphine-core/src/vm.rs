@@ -8,9 +8,9 @@ use std::{
 use crate::{
     bytecode::{BinaryOp, Bytecode, Instruction, UnaryOp, VariableLookupTable},
     error::{StdlibError, VmError},
-    eval::{Function, FunctionKind, Value},
     runtime::common::RuntimeContext,
     stdlib::{get_standard_functions, get_standard_variables},
+    value::{Function, FunctionKind, Value},
 };
 
 // Convenience trait, so we don't have to write out the same convert call for each Stdlib Result

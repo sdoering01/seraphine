@@ -2,8 +2,8 @@ use std::{cell::RefCell, io::BufRead, rc::Rc};
 
 use crate::{
     error::StdlibError,
-    eval::{print_values, SeraphineIterator, Type, Value, NULL_VALUE},
     runtime::common::RuntimeContext,
+    value::{print_values, SeraphineIterator, Type, Value, NULL_VALUE},
 };
 
 pub(super) fn _set_internal_side_effect_flag(

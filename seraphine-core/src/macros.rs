@@ -4,7 +4,7 @@
 macro_rules! assert_null {
     ( $value:expr ) => {
         match $value {
-            $crate::eval::Value::Null => {}
+            $crate::value::Value::Null => {}
             value => {
                 ::std::panic!("value is not null: {:?}", value);
             }
@@ -17,7 +17,7 @@ macro_rules! assert_eq_num {
     ( $left:expr, $right:expr ) => {
         match ($left, $right) {
             (value, expected) => {
-                let $crate::eval::Value::Number(got) = value else {
+                let $crate::value::Value::Number(got) = value else {
                     ::std::panic!("value is not a number");
                 };
                 ::std::assert_eq!(got, expected);
@@ -27,7 +27,7 @@ macro_rules! assert_eq_num {
     ( $left:expr, $right:expr, $eps:expr ) => {
         match ($left, $right) {
             (value, expected) => {
-                let $crate::eval::Value::Number(got) = value else {
+                let $crate::value::Value::Number(got) = value else {
                     ::std::panic!("value is not a number");
                 };
                 ::std::assert!((got - expected).abs() < $eps);
@@ -41,7 +41,7 @@ macro_rules! assert_eq_bool {
     ( $left:expr, $right:expr ) => {
         match ($left, $right) {
             (value, expected) => {
-                let $crate::eval::Value::Bool(got) = value else {
+                let $crate::value::Value::Bool(got) = value else {
                     ::std::panic!("value is not a bool");
                 };
                 ::std::assert_eq!(got, expected);
@@ -55,7 +55,7 @@ macro_rules! assert_eq_str {
     ( $left:expr, $right:expr ) => {
         match ($left, $right) {
             (value, expected) => {
-                let $crate::eval::Value::String(got) = value else {
+                let $crate::value::Value::String(got) = value else {
                     ::std::panic!("value is not a string");
                 };
                 ::std::assert_eq!(got, expected);
@@ -69,13 +69,13 @@ macro_rules! assert_eq_num_list {
     ( $left:expr, $right:expr ) => {
         match ($left, $right) {
             (value, expected) => {
-                let $crate::eval::Value::List(got) = value else {
+                let $crate::value::Value::List(got) = value else {
                     ::std::panic!("value is not a list");
                 };
                 let got = got.borrow();
                 ::std::assert_eq!(got.len(), expected.len(), "length mismatch");
                 for (i, (got, expected)) in got.iter().zip(expected.iter()).enumerate() {
-                    let $crate::eval::Value::Number(got) = got else {
+                    let $crate::value::Value::Number(got) = got else {
                         ::std::panic!("value is not a number");
                     };
                     ::std::assert_eq!(*got, *expected, "at index {}", i);
@@ -98,7 +98,7 @@ pub(crate) use assert_eq_num_list;
 macro_rules! assert_eq_num_object {
     ( $obj:expr, { $( $key:expr => $val:expr ),* } ) => {
         {
-            let $crate::eval::Value::Object(obj) = $obj else {
+            let $crate::value::Value::Object(obj) = $obj else {
                 ::std::panic!("value is not an object");
             };
             #[allow(unused_variables)]
@@ -107,7 +107,7 @@ macro_rules! assert_eq_num_object {
             let mut keys = 0;
             $(
                 match obj.get($key) {
-                    Some($crate::eval::Value::Number(got)) => {
+                    Some($crate::value::Value::Number(got)) => {
                         ::std::assert_eq!(*got, $val, "at key {}", $key);
                     }
                     Some(_) => {
