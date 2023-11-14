@@ -16,12 +16,34 @@ use crate::{
 
 // Convenience trait, so we don't have to write out the same convert call for each Stdlib Result
 trait ConvertableToVmResult<Output> {
-    fn convert(self, span: Span) -> Result<Output, VmError>;
+    fn convert(self, vm: &Vm) -> Result<Output, VmError>;
 }
 
 impl<T> ConvertableToVmResult<T> for Result<T, StdlibError> {
-    fn convert(self, span: Span) -> Result<T, VmError> {
-        self.map_err(|error| VmError::StdlibError { error, span })
+    fn convert(self, vm: &Vm) -> Result<T, VmError> {
+        self.map_err(|error| VmError::StdlibError {
+            error,
+            span: vm.bytecode.instructions[vm.instruction_pointer].span,
+        })
+    }
+}
+
+#[derive(Debug)]
+enum StackError {
+    Underflow,
+}
+
+impl<T> ConvertableToVmResult<T> for Result<T, StackError> {
+    fn convert(self, vm: &Vm) -> Result<T, VmError> {
+        self.map_err(|error| {
+            let instruction_idx = vm.instruction_pointer;
+            match error {
+                StackError::Underflow => VmError::StackUnderflow {
+                    instruction: vm.bytecode.instructions[instruction_idx].clone(),
+                    instruction_idx,
+                },
+            }
+        })
     }
 }
 
@@ -41,21 +63,17 @@ impl Stack {
         Self { stack: Vec::new() }
     }
 
-    fn peek(&self) -> Result<&Value, VmError> {
-        self.stack.last().ok_or(VmError::StackUnderflow)
+    fn peek(&self) -> Result<&Value, StackError> {
+        self.stack.last().ok_or(StackError::Underflow)
     }
 
-    fn peek_mut(&mut self) -> Result<&mut Value, VmError> {
-        self.stack.last_mut().ok_or(VmError::StackUnderflow)
+    fn pop(&mut self) -> Result<Value, StackError> {
+        self.stack.pop().ok_or(StackError::Underflow)
     }
 
-    fn pop(&mut self) -> Result<Value, VmError> {
-        self.stack.pop().ok_or(VmError::StackUnderflow)
-    }
-
-    fn pop_n(&mut self, n: usize) -> Result<Vec<Value>, VmError> {
+    fn pop_n(&mut self, n: usize) -> Result<Vec<Value>, StackError> {
         if n > self.stack.len() {
-            return Err(VmError::StackUnderflow);
+            return Err(StackError::Underflow);
         }
 
         let drain_start = self.stack.len() - n;
@@ -70,9 +88,9 @@ impl Stack {
         self.stack.len()
     }
 
-    fn trim(&mut self, new_len: usize) -> Result<(), VmError> {
+    fn trim(&mut self, new_len: usize) -> Result<(), StackError> {
         if self.stack.len() < new_len {
-            return Err(VmError::StackUnderflow);
+            return Err(StackError::Underflow);
         }
 
         self.stack.drain(new_len..self.stack.len());
@@ -206,7 +224,6 @@ impl Vm {
     fn inner_run(&mut self) -> Result<(), VmError> {
         while self.instruction_pointer < self.bytecode.instructions.len() {
             let instruction = &self.bytecode.instructions[self.instruction_pointer];
-            let span = instruction.span;
 
             match &instruction.kind {
                 InstructionKind::InternalPlaceholder(_) => {
@@ -214,33 +231,33 @@ impl Vm {
                 }
                 InstructionKind::End => break,
                 InstructionKind::UnaryOp(op) => {
-                    let operand = self.stack.pop()?;
+                    let operand = self.stack.pop().convert(self)?;
                     let result = match op {
-                        UnaryOp::Negate => operand.negate().convert(span)?,
-                        UnaryOp::Not => operand.bool_negate().convert(span)?,
+                        UnaryOp::Negate => operand.negate().convert(self)?,
+                        UnaryOp::Not => operand.bool_negate().convert(self)?,
                     };
                     self.stack.push(result);
                 }
                 InstructionKind::BinaryOp(op) => {
-                    let rhs = self.stack.pop()?;
-                    let lhs = self.stack.pop()?;
+                    let rhs = self.stack.pop().convert(self)?;
+                    let lhs = self.stack.pop().convert(self)?;
                     let result = match op {
-                        BinaryOp::Add => lhs.add(rhs).convert(span)?,
-                        BinaryOp::Subtract => lhs.subtract(rhs).convert(span)?,
-                        BinaryOp::Multiply => lhs.multiply(rhs).convert(span)?,
-                        BinaryOp::Divide => lhs.divide(rhs).convert(span)?,
-                        BinaryOp::Modulo => lhs.modulo(rhs).convert(span)?,
-                        BinaryOp::Power => lhs.power(rhs).convert(span)?,
-                        BinaryOp::Equal => lhs.equal(rhs).convert(span)?,
-                        BinaryOp::Unequal => lhs.unequal(rhs).convert(span)?,
-                        BinaryOp::LessThan => lhs.less_than(rhs).convert(span)?,
-                        BinaryOp::GreaterThan => lhs.greater_than(rhs).convert(span)?,
-                        BinaryOp::LessThanOrEqual => lhs.less_than_or_equal(rhs).convert(span)?,
+                        BinaryOp::Add => lhs.add(rhs).convert(self)?,
+                        BinaryOp::Subtract => lhs.subtract(rhs).convert(self)?,
+                        BinaryOp::Multiply => lhs.multiply(rhs).convert(self)?,
+                        BinaryOp::Divide => lhs.divide(rhs).convert(self)?,
+                        BinaryOp::Modulo => lhs.modulo(rhs).convert(self)?,
+                        BinaryOp::Power => lhs.power(rhs).convert(self)?,
+                        BinaryOp::Equal => lhs.equal(rhs).convert(self)?,
+                        BinaryOp::Unequal => lhs.unequal(rhs).convert(self)?,
+                        BinaryOp::LessThan => lhs.less_than(rhs).convert(self)?,
+                        BinaryOp::GreaterThan => lhs.greater_than(rhs).convert(self)?,
+                        BinaryOp::LessThanOrEqual => lhs.less_than_or_equal(rhs).convert(self)?,
                         BinaryOp::GreaterThanOrEqual => {
-                            lhs.greater_than_or_equal(rhs).convert(span)?
+                            lhs.greater_than_or_equal(rhs).convert(self)?
                         }
-                        BinaryOp::And => lhs.and(rhs).convert(span)?,
-                        BinaryOp::Or => lhs.or(rhs).convert(span)?,
+                        BinaryOp::And => lhs.and(rhs).convert(self)?,
+                        BinaryOp::Or => lhs.or(rhs).convert(self)?,
                     };
                     self.stack.push(result);
                 }
@@ -257,13 +274,13 @@ impl Vm {
                     self.stack.push(Value::String(s.clone()));
                 }
                 InstructionKind::MakeList { n_elems } => {
-                    let list = self.stack.pop_n(*n_elems)?;
+                    let list = self.stack.pop_n(*n_elems).convert(self)?;
                     self.stack.push(Value::List(Rc::new(RefCell::new(list))));
                 }
                 InstructionKind::MakeObject { n_keys } => {
                     let mut object = BTreeMap::new();
 
-                    let mut kv_list = self.stack.pop_n(*n_keys * 2)?;
+                    let mut kv_list = self.stack.pop_n(*n_keys * 2).convert(self)?;
                     kv_list.reverse();
 
                     assert_eq!(kv_list.len(), *n_keys * 2);
@@ -283,76 +300,76 @@ impl Vm {
                     None => {
                         return Err(VmError::UndefinedVariable {
                             name: self.variable_names.get_name(*idx).to_string(),
-                            span,
+                            span: instruction.span,
                         })
                     }
                 },
                 InstructionKind::StoreVariable(idx) => {
-                    let value = self.stack.pop()?;
+                    let value = self.stack.pop().convert(self)?;
                     self.scope.set(*idx, value);
                 }
                 InstructionKind::GetIndex => {
-                    let index = self.stack.pop()?;
-                    let value = self.stack.pop()?;
-                    let result = value.get_index(index).convert(span)?;
+                    let index = self.stack.pop().convert(self)?;
+                    let value = self.stack.pop().convert(self)?;
+                    let result = value.get_index(index).convert(self)?;
                     self.stack.push(result);
                 }
                 InstructionKind::SetIndex => {
-                    let rhs = self.stack.pop()?;
-                    let index = self.stack.pop()?;
-                    let value = self.stack.pop()?;
-                    value.set_index(index, rhs).convert(span)?;
+                    let rhs = self.stack.pop().convert(self)?;
+                    let index = self.stack.pop().convert(self)?;
+                    let value = self.stack.pop().convert(self)?;
+                    value.set_index(index, rhs).convert(self)?;
                 }
                 InstructionKind::GetMember => {
-                    let Value::String(member) = self.stack.pop()? else {
+                    let Value::String(member) = self.stack.pop().convert(self)? else {
                         unreachable!("corrupt bytecode -- non-string member")
                     };
-                    let value = self.stack.pop()?;
-                    let result = value.get_member(&member).convert(span)?;
+                    let value = self.stack.pop().convert(self)?;
+                    let result = value.get_member(&member).convert(self)?;
                     self.stack.push(result);
                 }
                 InstructionKind::SetMember => {
-                    let rhs = self.stack.pop()?;
-                    let Value::String(member) = self.stack.pop()? else {
+                    let rhs = self.stack.pop().convert(self)?;
+                    let Value::String(member) = self.stack.pop().convert(self)? else {
                         unreachable!("corrupt bytecode -- non-string member")
                     };
-                    let value = self.stack.pop()?;
-                    value.set_member(&member, rhs).convert(span)?;
+                    let value = self.stack.pop().convert(self)?;
+                    value.set_member(&member, rhs).convert(self)?;
                 }
                 InstructionKind::Jump(dest) => {
                     self.instruction_pointer = *dest;
                     continue;
                 }
                 InstructionKind::JumpIfTrue(dest) => {
-                    let cond = self.stack.pop()?;
+                    let cond = self.stack.pop().convert(self)?;
                     if cond.as_bool() {
                         self.instruction_pointer = *dest;
                         continue;
                     }
                 }
                 InstructionKind::JumpIfFalse(dest) => {
-                    let cond = self.stack.pop()?;
+                    let cond = self.stack.pop().convert(self)?;
                     if !cond.as_bool() {
                         self.instruction_pointer = *dest;
                         continue;
                     }
                 }
                 InstructionKind::JumpIfTrueNoPop(dest) => {
-                    let cond = self.stack.peek()?;
+                    let cond = self.stack.peek().convert(self)?;
                     if cond.as_bool() {
                         self.instruction_pointer = *dest;
                         continue;
                     }
                 }
                 InstructionKind::JumpIfFalseNoPop(dest) => {
-                    let cond = self.stack.peek()?;
+                    let cond = self.stack.peek().convert(self)?;
                     if !cond.as_bool() {
                         self.instruction_pointer = *dest;
                         continue;
                     }
                 }
                 InstructionKind::CastBool => {
-                    let value = self.stack.pop()?;
+                    let value = self.stack.pop().convert(self)?;
                     self.stack.push(Value::Bool(value.as_bool()));
                 }
                 InstructionKind::PushFunction {
@@ -368,8 +385,8 @@ impl Vm {
                         self.scope.clone(),
                     ))),
                 InstructionKind::FunctionCall { arg_count } => {
-                    let args = self.stack.pop_n(*arg_count)?;
-                    let callable = self.stack.pop()?;
+                    let args = self.stack.pop_n(*arg_count).convert(self)?;
+                    let callable = self.stack.pop().convert(self)?;
 
                     // TODO: Replace with Result
                     let Value::Function(func) = callable else {
@@ -399,7 +416,7 @@ impl Vm {
                             // TODO: Create CallStackItem, when runtime error messages with stack
                             // trace are implemented
 
-                            let val = rust_func(&mut self.ctx, receiver, args).convert(span)?;
+                            let val = rust_func(&mut self.ctx, receiver, args).convert(self)?;
                             self.stack.push(val);
                         }
                         FunctionKind::UserDefinedVm {
@@ -424,7 +441,7 @@ impl Vm {
                                 prev_scope: scope,
                                 continue_at_instruction: self.instruction_pointer + 1,
                                 stack_save_slots,
-                                caller_span: span,
+                                caller_span: instruction.span,
                             });
 
                             self.instruction_pointer = *entrypoint;
@@ -433,7 +450,7 @@ impl Vm {
                     }
                 }
                 InstructionKind::Return => {
-                    let value = self.stack.pop()?;
+                    let value = self.stack.pop().convert(self)?;
 
                     let mut previous_state = self
                         .call_stack
@@ -452,12 +469,20 @@ impl Vm {
                     continue;
                 }
                 InstructionKind::MakeIterator => {
-                    let value = self.stack.pop()?;
-                    let iterator = value.make_iterator().convert(span)?;
+                    let value = self.stack.pop().convert(self)?;
+                    let iterator = value.make_iterator().convert(self)?;
                     self.stack.push(Value::Iterator(iterator));
                 }
                 InstructionKind::AdvanceIteratorJumpIfDrained(dest) => {
-                    match self.stack.peek_mut()?.advance_iterator().convert(span)? {
+                    match self
+                        .stack
+                        .peek()
+                        // Workaround, so that `self` can be borrowed in `convert`
+                        .cloned()
+                        .convert(self)?
+                        .advance_iterator()
+                        .convert(self)?
+                    {
                         Some(value) => self.stack.push(value),
                         None => {
                             self.instruction_pointer = *dest;
@@ -469,7 +494,9 @@ impl Vm {
                     self.stack_save_slots[*slot_idx] = self.stack.len();
                 }
                 InstructionKind::TrimStackSize { slot_idx } => {
-                    self.stack.trim(self.stack_save_slots[*slot_idx])?;
+                    self.stack
+                        .trim(self.stack_save_slots[*slot_idx])
+                        .convert(self)?;
                 }
             }
             self.instruction_pointer += 1;
@@ -500,7 +527,7 @@ mod tests {
         println!("{:#?}", instructions);
         let mut vm = Vm::new(instructions);
         vm.run()?;
-        let tos = vm.stack.pop()?;
+        let tos = vm.stack.pop().unwrap();
         Ok(tos)
     }
 

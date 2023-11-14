@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::{
+    bytecode::Instruction,
     common::{Pos, Span},
     eval::ControlFlow,
     tokenizer::{Operator, Token, TokenKind},
@@ -416,9 +417,18 @@ impl FormattableWithContext for EvalError {
 
 #[derive(Debug)]
 pub enum VmError {
-    StdlibError { error: StdlibError, span: Span },
-    StackUnderflow,
-    UndefinedVariable { name: String, span: Span },
+    StdlibError {
+        error: StdlibError,
+        span: Span,
+    },
+    StackUnderflow {
+        instruction: Instruction,
+        instruction_idx: usize,
+    },
+    UndefinedVariable {
+        name: String,
+        span: Span,
+    },
 }
 
 impl Display for VmError {
@@ -426,7 +436,15 @@ impl Display for VmError {
         use VmError::*;
         match self {
             StdlibError { error, .. } => write!(f, "{}", error),
-            StackUnderflow => write!(f, "Stack underflow"),
+            StackUnderflow {
+                instruction,
+                instruction_idx,
+                ..
+            } => write!(
+                f,
+                "Stack underflow at instruction index {} ({:?})",
+                instruction_idx, instruction.kind
+            ),
             UndefinedVariable { name, .. } => write!(f, "Variable '{}' is not defined", name),
         }
     }
@@ -435,10 +453,12 @@ impl Display for VmError {
 impl FormattableWithContext for VmError {
     fn error_context(&self, input: &str, file_name: &str) -> Option<ErrorContext> {
         match self {
-            VmError::StdlibError { span, .. } | VmError::UndefinedVariable { span, .. } => {
-                Some(error_pos_to_error_context(input, file_name, span.start))
-            }
-            VmError::StackUnderflow => None,
+            VmError::StdlibError { span, .. }
+            | VmError::UndefinedVariable { span, .. }
+            | VmError::StackUnderflow {
+                instruction: Instruction { span, .. },
+                ..
+            } => Some(error_pos_to_error_context(input, file_name, span.start)),
         }
     }
 
