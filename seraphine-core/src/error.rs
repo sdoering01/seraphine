@@ -219,8 +219,13 @@ impl RuntimeError for EvalError {
 
 impl RuntimeError for VmError {
     fn cause(&self) -> Option<&dyn RuntimeError> {
-        // TODO: Handle StdlibError::FunctionCall for traceback
-        None
+        match self {
+            VmError::StdlibError {
+                error: StdlibError::FunctionCall(error),
+                ..
+            } => Some(error.as_ref()),
+            _ => None,
+        }
     }
 }
 
@@ -392,40 +397,14 @@ impl FormattableWithContext for EvalError {
                 ..
             } if with_traceback => {
                 let traceback = self.traceback(input, file_name);
-
-                let mut formatted_error = String::new();
-                formatted_error.push_str("Traceback\n");
-                let padding = 2;
-                for error_ctx in traceback {
-                    for _ in 0..padding {
-                        formatted_error.push(' ');
-                    }
-                    formatted_error.push_str(&format_pos(
-                        &error_ctx.file_name,
-                        error_ctx.line_num,
-                        error_ctx.column_num,
-                    ));
-                    formatted_error.push('\n');
-                    formatted_error.push_str(&highlight_pos(
-                        &error_ctx.line,
-                        error_ctx.line_num,
-                        error_ctx.column_num,
-                        padding,
-                    ));
-                    formatted_error.push('\n');
-                }
-                formatted_error.push_str(&self.to_string());
-
-                formatted_error
+                format_traceback(&traceback, &self.to_string())
             }
             EvalError::StdlibError {
                 error: StdlibError::FunctionCall(_),
                 span,
             } => {
                 let error_ctx = error_pos_to_error_context(input, file_name, span.start);
-                let mut formatted_error = format_error(self.to_string(), error_ctx);
-                formatted_error.push_str("\nTraceback omitted");
-                formatted_error
+                format_error_omitted_traceback(self.to_string(), error_ctx)
             }
             _ => match self.error_context(input, file_name) {
                 Some(error_ctx) => format_error(self.to_string(), error_ctx),
@@ -437,26 +416,53 @@ impl FormattableWithContext for EvalError {
 
 #[derive(Debug)]
 pub enum VmError {
-    StdlibError(StdlibError),
+    StdlibError { error: StdlibError, span: Span },
     StackUnderflow,
-    UndefinedVariable(String),
+    UndefinedVariable { name: String, span: Span },
 }
 
 impl Display for VmError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use VmError::*;
         match self {
-            StdlibError(e) => write!(f, "{}", e),
+            StdlibError { error, .. } => write!(f, "{}", error),
             StackUnderflow => write!(f, "Stack underflow"),
-            UndefinedVariable(name) => write!(f, "Variable '{}' is not defined", name),
+            UndefinedVariable { name, .. } => write!(f, "Variable '{}' is not defined", name),
         }
     }
 }
 
 impl FormattableWithContext for VmError {
-    fn error_context(&self, _input: &str, _file_name: &str) -> Option<ErrorContext> {
-        // TODO: Implement this
-        None
+    fn error_context(&self, input: &str, file_name: &str) -> Option<ErrorContext> {
+        match self {
+            VmError::StdlibError { span, .. } | VmError::UndefinedVariable { span, .. } => {
+                Some(error_pos_to_error_context(input, file_name, span.start))
+            }
+            VmError::StackUnderflow => None,
+        }
+    }
+
+    fn format(&self, input: &str, file_name: &str, with_traceback: bool) -> String {
+        match self {
+            VmError::StdlibError {
+                error: StdlibError::FunctionCall(_),
+                ..
+            } if with_traceback => {
+                let traceback = self.traceback(input, file_name);
+                format_traceback(&traceback, &self.to_string())
+            }
+            VmError::StdlibError {
+                error: StdlibError::FunctionCall(_),
+                span,
+            } => {
+                let error_ctx = error_pos_to_error_context(input, file_name, span.start);
+                format_error_omitted_traceback(self.to_string(), error_ctx)
+            }
+            _ => match self.error_context(input, file_name) {
+                Some(error_ctx) => format_error(self.to_string(), error_ctx),
+                None => self.to_string(),
+            },
+        }
     }
 }
 
@@ -550,6 +556,38 @@ pub fn format_error(error_message_prefix: impl Into<String>, error_ctx: ErrorCon
         0,
     ));
     error_message
+}
+
+pub fn format_traceback(traceback: &[ErrorContext], error: &str) -> String {
+    let mut formatted_error = String::new();
+    formatted_error.push_str("Traceback\n");
+    let padding = 2;
+    for error_ctx in traceback {
+        for _ in 0..padding {
+            formatted_error.push(' ');
+        }
+        formatted_error.push_str(&format_pos(
+            &error_ctx.file_name,
+            error_ctx.line_num,
+            error_ctx.column_num,
+        ));
+        formatted_error.push('\n');
+        formatted_error.push_str(&highlight_pos(
+            &error_ctx.line,
+            error_ctx.line_num,
+            error_ctx.column_num,
+            padding,
+        ));
+        formatted_error.push('\n');
+    }
+    formatted_error.push_str(error);
+    formatted_error
+}
+
+fn format_error_omitted_traceback(error: impl Into<String>, error_ctx: ErrorContext) -> String {
+    let mut formatted_error = format_error(error.into(), error_ctx);
+    formatted_error.push_str("\nTraceback omitted");
+    formatted_error
 }
 
 #[cfg(test)]

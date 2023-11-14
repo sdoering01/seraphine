@@ -12,21 +12,21 @@ use option_parser::{OptionParseAction, OptionParser, Runtime};
 mod option_parser;
 mod repl;
 
-fn run_with_vm(code: &str) -> Result<(), SeraphineError> {
+fn run_with_vm(code: &str, code_file_name: &str) -> Result<(), SeraphineError> {
     let tokens = tokenize(code)?;
     let ast = parse(&tokens)?;
-    let bytecode = generate(&ast);
+    let bytecode = generate(&ast, code, code_file_name);
     let mut vm = Vm::new(bytecode);
     vm.run().map_err(|e| e.into())
 }
 
-fn eval_code(code: &str, runtime: Runtime) -> Result<(), SeraphineError> {
+fn eval_code(code: &str, code_file_name: &str, runtime: Runtime) -> Result<(), SeraphineError> {
     match runtime {
         Runtime::Evaluator => {
             let mut eval = Evaluator::new();
             eval.eval_str(code).map(|_| ())
         }
-        Runtime::Vm => run_with_vm(code),
+        Runtime::Vm => run_with_vm(code, code_file_name),
     }
 }
 
@@ -57,7 +57,7 @@ pub fn main() {
                 }
             };
 
-            if let Err(e) = eval_code(&code, option_parser.runtime()) {
+            if let Err(e) = eval_code(&code, input_file, option_parser.runtime()) {
                 eprintln!(
                     "{}{}{}",
                     color::Fg(color::Red),

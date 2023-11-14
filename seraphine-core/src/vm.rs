@@ -6,8 +6,9 @@ use std::{
 };
 
 use crate::{
-    bytecode::{BinaryOp, Bytecode, Instruction, UnaryOp, VariableLookupTable},
-    error::{StdlibError, VmError},
+    bytecode::{BinaryOp, Bytecode, InstructionKind, UnaryOp, VariableLookupTable},
+    common::Span,
+    error::{FormattableWithContext, StdlibError, VmError},
     runtime::common::RuntimeContext,
     stdlib::{get_standard_functions, get_standard_variables},
     value::{Function, FunctionKind, Value},
@@ -15,13 +16,12 @@ use crate::{
 
 // Convenience trait, so we don't have to write out the same convert call for each Stdlib Result
 trait ConvertableToVmResult<Output> {
-    // TODO: Add Span as argument
-    fn convert(self) -> Result<Output, VmError>;
+    fn convert(self, span: Span) -> Result<Output, VmError>;
 }
 
 impl<T> ConvertableToVmResult<T> for Result<T, StdlibError> {
-    fn convert(self) -> Result<T, VmError> {
-        self.map_err(VmError::StdlibError)
+    fn convert(self, span: Span) -> Result<T, VmError> {
+        self.map_err(|error| VmError::StdlibError { error, span })
     }
 }
 
@@ -126,6 +126,7 @@ struct CallStackItem {
     prev_scope: Scope,
     continue_at_instruction: usize,
     stack_save_slots: Vec<usize>,
+    caller_span: Span,
 }
 
 pub struct Vm {
@@ -182,60 +183,84 @@ impl Vm {
         }
     }
 
+    pub fn format_error(&self, error: VmError) -> String {
+        error.format(&self.bytecode.code, &self.bytecode.code_file_name, true)
+    }
+
     pub fn run(&mut self) -> Result<(), VmError> {
+        match self.inner_run() {
+            result @ Ok(_) => result,
+            Err(mut err) => {
+                // Build up tracback for error, starting with most recent call
+                while let Some(call_stack_item) = self.call_stack.pop() {
+                    err = VmError::StdlibError {
+                        error: StdlibError::FunctionCall(Box::new(err)),
+                        span: call_stack_item.caller_span,
+                    }
+                }
+                Err(err)
+            }
+        }
+    }
+
+    fn inner_run(&mut self) -> Result<(), VmError> {
         while self.instruction_pointer < self.bytecode.instructions.len() {
             let instruction = &self.bytecode.instructions[self.instruction_pointer];
-            match instruction {
-                Instruction::InternalPlaceholder(_) => {
+            let span = instruction.span;
+
+            match &instruction.kind {
+                InstructionKind::InternalPlaceholder(_) => {
                     panic!("corrupt bytecode -- internal placeholder instruction found")
                 }
-                Instruction::End => break,
-                Instruction::UnaryOp(op) => {
+                InstructionKind::End => break,
+                InstructionKind::UnaryOp(op) => {
                     let operand = self.stack.pop()?;
                     let result = match op {
-                        UnaryOp::Negate => operand.negate().convert()?,
-                        UnaryOp::Not => operand.bool_negate().convert()?,
+                        UnaryOp::Negate => operand.negate().convert(span)?,
+                        UnaryOp::Not => operand.bool_negate().convert(span)?,
                     };
                     self.stack.push(result);
                 }
-                Instruction::BinaryOp(op) => {
+                InstructionKind::BinaryOp(op) => {
                     let rhs = self.stack.pop()?;
                     let lhs = self.stack.pop()?;
                     let result = match op {
-                        BinaryOp::Add => lhs.add(rhs).convert()?,
-                        BinaryOp::Subtract => lhs.subtract(rhs).convert()?,
-                        BinaryOp::Multiply => lhs.multiply(rhs).convert()?,
-                        BinaryOp::Divide => lhs.divide(rhs).convert()?,
-                        BinaryOp::Modulo => lhs.modulo(rhs).convert()?,
-                        BinaryOp::Power => lhs.power(rhs).convert()?,
-                        BinaryOp::Equal => lhs.equal(rhs).convert()?,
-                        BinaryOp::Unequal => lhs.unequal(rhs).convert()?,
-                        BinaryOp::LessThan => lhs.less_than(rhs).convert()?,
-                        BinaryOp::GreaterThan => lhs.greater_than(rhs).convert()?,
-                        BinaryOp::LessThanOrEqual => lhs.less_than_or_equal(rhs).convert()?,
-                        BinaryOp::GreaterThanOrEqual => lhs.greater_than_or_equal(rhs).convert()?,
-                        BinaryOp::And => lhs.and(rhs).convert()?,
-                        BinaryOp::Or => lhs.or(rhs).convert()?,
+                        BinaryOp::Add => lhs.add(rhs).convert(span)?,
+                        BinaryOp::Subtract => lhs.subtract(rhs).convert(span)?,
+                        BinaryOp::Multiply => lhs.multiply(rhs).convert(span)?,
+                        BinaryOp::Divide => lhs.divide(rhs).convert(span)?,
+                        BinaryOp::Modulo => lhs.modulo(rhs).convert(span)?,
+                        BinaryOp::Power => lhs.power(rhs).convert(span)?,
+                        BinaryOp::Equal => lhs.equal(rhs).convert(span)?,
+                        BinaryOp::Unequal => lhs.unequal(rhs).convert(span)?,
+                        BinaryOp::LessThan => lhs.less_than(rhs).convert(span)?,
+                        BinaryOp::GreaterThan => lhs.greater_than(rhs).convert(span)?,
+                        BinaryOp::LessThanOrEqual => lhs.less_than_or_equal(rhs).convert(span)?,
+                        BinaryOp::GreaterThanOrEqual => {
+                            lhs.greater_than_or_equal(rhs).convert(span)?
+                        }
+                        BinaryOp::And => lhs.and(rhs).convert(span)?,
+                        BinaryOp::Or => lhs.or(rhs).convert(span)?,
                     };
                     self.stack.push(result);
                 }
-                Instruction::PushNull => {
+                InstructionKind::PushNull => {
                     self.stack.push(Value::Null);
                 }
-                Instruction::PushNumber(n) => {
+                InstructionKind::PushNumber(n) => {
                     self.stack.push(Value::Number(*n));
                 }
-                Instruction::PushBool(b) => {
+                InstructionKind::PushBool(b) => {
                     self.stack.push(Value::Bool(*b));
                 }
-                Instruction::PushString(s) => {
+                InstructionKind::PushString(s) => {
                     self.stack.push(Value::String(s.clone()));
                 }
-                Instruction::MakeList { n_elems } => {
+                InstructionKind::MakeList { n_elems } => {
                     let list = self.stack.pop_n(*n_elems)?;
                     self.stack.push(Value::List(Rc::new(RefCell::new(list))));
                 }
-                Instruction::MakeObject { n_keys } => {
+                InstructionKind::MakeObject { n_keys } => {
                     let mut object = BTreeMap::new();
 
                     let mut kv_list = self.stack.pop_n(*n_keys * 2)?;
@@ -253,83 +278,84 @@ impl Vm {
                     self.stack
                         .push(Value::Object(Rc::new(RefCell::new(object))));
                 }
-                Instruction::LoadVariable(idx) => match self.scope.get(*idx) {
+                InstructionKind::LoadVariable(idx) => match self.scope.get(*idx) {
                     Some(value) => self.stack.push(value.clone()),
                     None => {
-                        return Err(VmError::UndefinedVariable(
-                            self.variable_names.get_name(*idx).to_string(),
-                        ))
+                        return Err(VmError::UndefinedVariable {
+                            name: self.variable_names.get_name(*idx).to_string(),
+                            span,
+                        })
                     }
                 },
-                Instruction::StoreVariable(idx) => {
+                InstructionKind::StoreVariable(idx) => {
                     let value = self.stack.pop()?;
                     self.scope.set(*idx, value);
                 }
-                Instruction::GetIndex => {
+                InstructionKind::GetIndex => {
                     let index = self.stack.pop()?;
                     let value = self.stack.pop()?;
-                    let result = value.get_index(index).convert()?;
+                    let result = value.get_index(index).convert(span)?;
                     self.stack.push(result);
                 }
-                Instruction::SetIndex => {
+                InstructionKind::SetIndex => {
                     let rhs = self.stack.pop()?;
                     let index = self.stack.pop()?;
                     let value = self.stack.pop()?;
-                    value.set_index(index, rhs).convert()?;
+                    value.set_index(index, rhs).convert(span)?;
                 }
-                Instruction::GetMember => {
+                InstructionKind::GetMember => {
                     let Value::String(member) = self.stack.pop()? else {
                         unreachable!("corrupt bytecode -- non-string member")
                     };
                     let value = self.stack.pop()?;
-                    let result = value.get_member(&member).convert()?;
+                    let result = value.get_member(&member).convert(span)?;
                     self.stack.push(result);
                 }
-                Instruction::SetMember => {
+                InstructionKind::SetMember => {
                     let rhs = self.stack.pop()?;
                     let Value::String(member) = self.stack.pop()? else {
                         unreachable!("corrupt bytecode -- non-string member")
                     };
                     let value = self.stack.pop()?;
-                    value.set_member(&member, rhs).convert()?;
+                    value.set_member(&member, rhs).convert(span)?;
                 }
-                Instruction::Jump(dest) => {
+                InstructionKind::Jump(dest) => {
                     self.instruction_pointer = *dest;
                     continue;
                 }
-                Instruction::JumpIfTrue(dest) => {
+                InstructionKind::JumpIfTrue(dest) => {
                     let cond = self.stack.pop()?;
                     if cond.as_bool() {
                         self.instruction_pointer = *dest;
                         continue;
                     }
                 }
-                Instruction::JumpIfFalse(dest) => {
+                InstructionKind::JumpIfFalse(dest) => {
                     let cond = self.stack.pop()?;
                     if !cond.as_bool() {
                         self.instruction_pointer = *dest;
                         continue;
                     }
                 }
-                Instruction::JumpIfTrueNoPop(dest) => {
+                InstructionKind::JumpIfTrueNoPop(dest) => {
                     let cond = self.stack.peek()?;
                     if cond.as_bool() {
                         self.instruction_pointer = *dest;
                         continue;
                     }
                 }
-                Instruction::JumpIfFalseNoPop(dest) => {
+                InstructionKind::JumpIfFalseNoPop(dest) => {
                     let cond = self.stack.peek()?;
                     if !cond.as_bool() {
                         self.instruction_pointer = *dest;
                         continue;
                     }
                 }
-                Instruction::CastBool => {
+                InstructionKind::CastBool => {
                     let value = self.stack.pop()?;
                     self.stack.push(Value::Bool(value.as_bool()));
                 }
-                Instruction::PushFunction {
+                InstructionKind::PushFunction {
                     param_count,
                     entrypoint,
                     name_idx,
@@ -341,7 +367,7 @@ impl Vm {
                         *entrypoint,
                         self.scope.clone(),
                     ))),
-                Instruction::FunctionCall { arg_count } => {
+                InstructionKind::FunctionCall { arg_count } => {
                     let args = self.stack.pop_n(*arg_count)?;
                     let callable = self.stack.pop()?;
 
@@ -373,7 +399,7 @@ impl Vm {
                             // TODO: Create CallStackItem, when runtime error messages with stack
                             // trace are implemented
 
-                            let val = rust_func(&mut self.ctx, receiver, args).convert()?;
+                            let val = rust_func(&mut self.ctx, receiver, args).convert(span)?;
                             self.stack.push(val);
                         }
                         FunctionKind::UserDefinedVm {
@@ -398,6 +424,7 @@ impl Vm {
                                 prev_scope: scope,
                                 continue_at_instruction: self.instruction_pointer + 1,
                                 stack_save_slots,
+                                caller_span: span,
                             });
 
                             self.instruction_pointer = *entrypoint;
@@ -405,7 +432,7 @@ impl Vm {
                         }
                     }
                 }
-                Instruction::Return => {
+                InstructionKind::Return => {
                     let value = self.stack.pop()?;
 
                     let mut previous_state = self
@@ -424,13 +451,13 @@ impl Vm {
                     self.instruction_pointer = previous_state.continue_at_instruction;
                     continue;
                 }
-                Instruction::MakeIterator => {
+                InstructionKind::MakeIterator => {
                     let value = self.stack.pop()?;
-                    let iterator = value.make_iterator().convert()?;
+                    let iterator = value.make_iterator().convert(span)?;
                     self.stack.push(Value::Iterator(iterator));
                 }
-                Instruction::AdvanceIteratorJumpIfDrained(dest) => {
-                    match self.stack.peek_mut()?.advance_iterator().convert()? {
+                InstructionKind::AdvanceIteratorJumpIfDrained(dest) => {
+                    match self.stack.peek_mut()?.advance_iterator().convert(span)? {
                         Some(value) => self.stack.push(value),
                         None => {
                             self.instruction_pointer = *dest;
@@ -438,10 +465,10 @@ impl Vm {
                         }
                     };
                 }
-                Instruction::SaveStackSize { slot_idx } => {
+                InstructionKind::SaveStackSize { slot_idx } => {
                     self.stack_save_slots[*slot_idx] = self.stack.len();
                 }
-                Instruction::TrimStackSize { slot_idx } => {
+                InstructionKind::TrimStackSize { slot_idx } => {
                     self.stack.trim(self.stack_save_slots[*slot_idx])?;
                 }
             }
@@ -469,7 +496,7 @@ mod tests {
     fn run_str(s: &str) -> Result<Value, SeraphineError> {
         let tokens = tokenize(s)?;
         let ast = parse(&tokens)?;
-        let instructions = bytecode::generate(&ast);
+        let instructions = bytecode::generate(&ast, s, "<test>");
         println!("{:#?}", instructions);
         let mut vm = Vm::new(instructions);
         vm.run()?;
@@ -1016,5 +1043,44 @@ mod tests {
             recur(10)
         ";
         assert_eq_num!(run_str(code).unwrap(), 14.0);
+    }
+
+    #[test]
+    fn test_traceback() {
+        let code = concat!(
+            "fn a() {\n",
+            "   [] + 1\n",
+            "}\n",
+            "\n",
+            "fn b() {\n",
+            "   a()\n",
+            "}\n",
+            "\n",
+            "b()\n",
+        );
+
+        let tokens = tokenize(code).unwrap();
+        let ast = parse(&tokens).unwrap();
+        let instructions = bytecode::generate(&ast, code, "<test>");
+        let mut vm = Vm::new(instructions);
+        let err = vm.run().unwrap_err();
+        let error_string = vm.format_error(err);
+
+        // TODO: Use snapshot testing crate `insta` for this
+        let want_error = concat!(
+            "Traceback\n",
+            "  <test>:9:1\n",
+            "  9 | b()\n",
+            "      ^\n",
+            "  <test>:6:4\n",
+            "  6 |    a()\n",
+            "         ^\n",
+            "  <test>:2:4\n",
+            "  2 |    [] + 1\n",
+            "         ^\n",
+            "Cannot add value of type list and value of type number"
+        );
+
+        assert_eq!(error_string, want_error);
     }
 }
