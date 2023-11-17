@@ -160,7 +160,7 @@ pub struct Vm {
 }
 
 impl Vm {
-    pub fn new(bytecode: Bytecode) -> Vm {
+    pub fn new(bytecode: Bytecode) -> Result<Vm, VmError> {
         let variable_names = VariableLookupTable::from(bytecode.variable_names.clone());
 
         let global_scope = Scope::with_len(variable_names.len());
@@ -174,8 +174,7 @@ impl Vm {
         }
 
         let Some(this_idx) = variable_names.lookup("this") else {
-            // TODO: Replace with Result
-            panic!("corrupt bytecode: `this` not in variable names");
+            return Err(VmError::BytecodeNoThis);
         };
 
         let stack_save_slots = vec![0; bytecode.stack_save_slots];
@@ -188,7 +187,7 @@ impl Vm {
             Some(Box::new(stdout())),
         );
 
-        Vm {
+        Ok(Vm {
             bytecode,
             variable_names,
             stack: Stack::new(),
@@ -198,7 +197,7 @@ impl Vm {
             stack_save_slots,
             this_idx,
             ctx,
-        }
+        })
     }
 
     pub fn format_error(&self, error: VmError) -> String {
@@ -226,8 +225,8 @@ impl Vm {
             let instruction = &self.bytecode.instructions[self.instruction_pointer];
 
             match &instruction.kind {
-                InstructionKind::InternalPlaceholder(_) => {
-                    panic!("corrupt bytecode -- internal placeholder instruction found")
+                InstructionKind::InternalPlaceholder(kind) => {
+                    return Err(VmError::BytecodeInternalPlaceholder(kind.clone()));
                 }
                 InstructionKind::End => break,
                 InstructionKind::UnaryOp(op) => {
@@ -388,25 +387,36 @@ impl Vm {
                     let args = self.stack.pop_n(*arg_count).convert(self)?;
                     let callable = self.stack.pop().convert(self)?;
 
-                    // TODO: Replace with Result
                     let Value::Function(func) = callable else {
-                        panic!("cannot call value of type {}", callable.get_type());
+                        let error_string =
+                            format!("Cannot call value of type {}", callable.get_type());
+                        return Err(VmError::StdlibError {
+                            error: StdlibError::TypeError(error_string),
+                            span: instruction.span,
+                        });
                     };
 
                     if let Some(want_arg_count) = func.get_arg_count() {
                         if want_arg_count != *arg_count {
-                            // TODO: Replace with Result
-                            panic!(
-                                "function wants {} parameters, but only {} were provided",
-                                want_arg_count, arg_count
-                            );
+                            return Err(VmError::StdlibError {
+                                error: StdlibError::FunctionWrongArgAmount {
+                                    name: func.get_name(),
+                                    expected: want_arg_count,
+                                    got: *arg_count,
+                                },
+                                span: instruction.span,
+                            });
                         }
                     }
 
                     match func.kind.as_ref() {
                         FunctionKind::UserDefinedAst { .. } => {
-                            // TODO: Replace with Result
-                            panic!("cannot call user defined ast functions in vm")
+                            return Err(VmError::StdlibError {
+                                error: StdlibError::GenericError(
+                                    "Cannot call user defined ast function in VM".to_string(),
+                                ),
+                                span: instruction.span,
+                            });
                         }
                         FunctionKind::Builtin {
                             func: rust_func, ..
@@ -452,11 +462,11 @@ impl Vm {
                 InstructionKind::Return => {
                     let value = self.stack.pop().convert(self)?;
 
-                    let mut previous_state = self
-                        .call_stack
-                        .pop()
-                        // TODO: Replace with Result
-                        .unwrap_or_else(|| panic!("return outside of function"));
+                    let mut previous_state = self.call_stack.pop().ok_or(
+                        VmError::BytecodeReturnOutsideOfFunctionCall {
+                            span: instruction.span,
+                        },
+                    )?;
 
                     std::mem::swap(&mut previous_state.prev_stack, &mut self.stack);
                     std::mem::swap(&mut previous_state.prev_scope, &mut self.scope);
@@ -523,9 +533,9 @@ mod tests {
     fn run_str(s: &str) -> Result<Value, SeraphineError> {
         let tokens = tokenize(s)?;
         let ast = parse(&tokens)?;
-        let instructions = bytecode::generate(&ast, s, "<test>");
+        let instructions = bytecode::generate(&ast, s, "<test>")?;
         println!("{:#?}", instructions);
-        let mut vm = Vm::new(instructions);
+        let mut vm = Vm::new(instructions)?;
         vm.run()?;
         let tos = vm.stack.pop().unwrap();
         Ok(tos)
@@ -828,12 +838,10 @@ mod tests {
 
     #[test]
     fn test_continue() {
-        use std::panic::catch_unwind;
-
         let code = "\
             continue
         ";
-        assert!(catch_unwind(|| run_str(code)).is_err());
+        assert!(run_str(code).is_err());
 
         let code = "\
             fn continue_func() {
@@ -844,7 +852,7 @@ mod tests {
                 continue_func()
             }
         ";
-        assert!(catch_unwind(|| run_str(code)).is_err());
+        assert!(run_str(code).is_err());
 
         let code = "\
             a = 0
@@ -951,12 +959,10 @@ mod tests {
 
     #[test]
     fn test_break() {
-        use std::panic::catch_unwind;
-
         let code = "\
             break
         ";
-        assert!(catch_unwind(|| run_str(code)).is_err());
+        assert!(run_str(code).is_err());
 
         let code = "\
             fn break_func() {
@@ -967,7 +973,7 @@ mod tests {
                 break_func()
             }
         ";
-        assert!(catch_unwind(|| run_str(code)).is_err());
+        assert!(run_str(code).is_err());
 
         let code = "\
             a = 0
@@ -1088,8 +1094,8 @@ mod tests {
 
         let tokens = tokenize(code).unwrap();
         let ast = parse(&tokens).unwrap();
-        let instructions = bytecode::generate(&ast, code, "<test>");
-        let mut vm = Vm::new(instructions);
+        let instructions = bytecode::generate(&ast, code, "<test>").unwrap();
+        let mut vm = Vm::new(instructions).unwrap();
         let err = vm.run().unwrap_err();
         let error_string = vm.format_error(err);
 

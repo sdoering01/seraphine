@@ -15,8 +15,8 @@ mod repl;
 fn run_with_vm(code: &str, code_file_name: &str) -> Result<(), SeraphineError> {
     let tokens = tokenize(code)?;
     let ast = parse(&tokens)?;
-    let bytecode = generate(&ast, code, code_file_name);
-    let mut vm = Vm::new(bytecode);
+    let bytecode = generate(&ast, code, code_file_name)?;
+    let mut vm = Vm::new(bytecode)?;
     vm.run().map_err(|e| e.into())
 }
 

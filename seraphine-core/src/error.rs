@@ -4,9 +4,10 @@ use std::{
 };
 
 use crate::{
-    bytecode::Instruction,
+    bytecode::{Instruction, PlaceholderInstructionKind},
     common::{Pos, Span},
     eval::ControlFlow,
+    parser::AstKind,
     tokenizer::{Operator, Token, TokenKind},
     value::Type,
 };
@@ -29,6 +30,7 @@ pub enum SeraphineError {
     TokenizeError(TokenizeError),
     ParseError(ParseError),
     EvalError(EvalError),
+    CodegenError(CodegenError),
     VmError(VmError),
     IoError(io::Error),
 }
@@ -41,6 +43,7 @@ impl Display for SeraphineError {
             ParseError(e) => write!(f, "Parse error: {}", e),
             EvalError(e) => write!(f, "Eval error: {}", e),
             VmError(e) => write!(f, "VM error: {}", e),
+            CodegenError(e) => write!(f, "Codegen error: {}", e),
             IoError(e) => write!(f, "IO error: {}", e),
         }
     }
@@ -52,6 +55,7 @@ impl SeraphineError {
             SeraphineError::TokenizeError(e) => e.format(input, file_name, with_traceback),
             SeraphineError::ParseError(e) => e.format(input, file_name, with_traceback),
             SeraphineError::EvalError(e) => e.format(input, file_name, with_traceback),
+            SeraphineError::CodegenError(e) => e.format(input, file_name, with_traceback),
             SeraphineError::VmError(e) => e.format(input, file_name, with_traceback),
             SeraphineError::IoError(e) => e.to_string(),
         }
@@ -73,6 +77,12 @@ impl From<ParseError> for SeraphineError {
 impl From<EvalError> for SeraphineError {
     fn from(e: EvalError) -> Self {
         Self::EvalError(e)
+    }
+}
+
+impl From<CodegenError> for SeraphineError {
+    fn from(e: CodegenError) -> Self {
+        Self::CodegenError(e)
     }
 }
 
@@ -416,6 +426,78 @@ impl FormattableWithContext for EvalError {
 }
 
 #[derive(Debug)]
+pub enum CodegenError {
+    ReturnOutsideOfFunction {
+        span: Span,
+    },
+    ContinueOutsideOfLoop {
+        span: Span,
+    },
+    BreakOutsideOfLoop {
+        span: Span,
+    },
+    DuplicateArgName {
+        func_name: Option<String>,
+        arg_name: String,
+        function_span: Span,
+    },
+    // It makes no sense to include a Span here, since this will only happen when the user provides
+    // a custom AST. The parser will always generate a block as the function body.
+    FunctionBodyNoBlock {
+        got_kind: AstKind,
+    },
+}
+
+impl Display for CodegenError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            CodegenError::ReturnOutsideOfFunction { .. } => {
+                write!(f, "return used outside of function")
+            }
+            CodegenError::ContinueOutsideOfLoop { .. } => {
+                write!(f, "continue used outside of loop")
+            }
+            CodegenError::BreakOutsideOfLoop { .. } => {
+                write!(f, "break used outside of loop")
+            }
+            CodegenError::DuplicateArgName {
+                func_name,
+                arg_name,
+                ..
+            } => {
+                match func_name {
+                    Some(name) => write!(f, "Function '{}'", name)?,
+                    None => write!(f, "Unnamed function")?,
+                };
+                write!(f, " has duplicate argument name '{}'", arg_name)
+            }
+            CodegenError::FunctionBodyNoBlock { got_kind } => {
+                write!(
+                    f,
+                    "Function body isn't a block, got function body {:?}",
+                    got_kind
+                )
+            }
+        }
+    }
+}
+
+impl FormattableWithContext for CodegenError {
+    fn error_context(&self, input: &str, file_name: &str) -> Option<ErrorContext> {
+        match self {
+            CodegenError::ReturnOutsideOfFunction { span }
+            | CodegenError::ContinueOutsideOfLoop { span }
+            | CodegenError::BreakOutsideOfLoop { span }
+            | CodegenError::DuplicateArgName {
+                function_span: span,
+                ..
+            } => Some(error_pos_to_error_context(input, file_name, span.start)),
+            CodegenError::FunctionBodyNoBlock { .. } => None,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum VmError {
     StdlibError {
         error: StdlibError,
@@ -429,6 +511,11 @@ pub enum VmError {
         name: String,
         span: Span,
     },
+    BytecodeReturnOutsideOfFunctionCall {
+        span: Span,
+    },
+    BytecodeNoThis,
+    BytecodeInternalPlaceholder(PlaceholderInstructionKind),
 }
 
 impl Display for VmError {
@@ -446,6 +533,16 @@ impl Display for VmError {
                 instruction_idx, instruction.kind
             ),
             UndefinedVariable { name, .. } => write!(f, "Variable '{}' is not defined", name),
+            BytecodeReturnOutsideOfFunctionCall { .. } => write!(
+                f,
+                "Corrupt bytecode -- `return` encountered outside of function call"
+            ),
+            BytecodeNoThis => write!(f, "Corrupt bytecode -- no `this` in variable names"),
+            BytecodeInternalPlaceholder(kind) => write!(
+                f,
+                "Corrupt bytecode -- contains internal placeholder instruction {:?}",
+                kind
+            ),
         }
     }
 }
@@ -458,7 +555,11 @@ impl FormattableWithContext for VmError {
             | VmError::StackUnderflow {
                 instruction: Instruction { span, .. },
                 ..
-            } => Some(error_pos_to_error_context(input, file_name, span.start)),
+            }
+            | VmError::BytecodeReturnOutsideOfFunctionCall { span } => {
+                Some(error_pos_to_error_context(input, file_name, span.start))
+            }
+            VmError::BytecodeNoThis | VmError::BytecodeInternalPlaceholder(_) => None,
         }
     }
 

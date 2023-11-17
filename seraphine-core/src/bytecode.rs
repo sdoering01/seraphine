@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::{
     common::Span,
+    error::CodegenError,
     parser::{Ast, AstKind},
 };
 
@@ -102,7 +103,7 @@ pub enum InstructionKind {
 const PLACEHOLDER_INSTRUCTION_KIND: InstructionKind =
     InstructionKind::InternalPlaceholder(PlaceholderInstructionKind::Placeholder);
 
-pub fn generate(ast: &Ast, code: &str, code_file_name: &str) -> Bytecode {
+pub fn generate(ast: &Ast, code: &str, code_file_name: &str) -> Result<Bytecode, CodegenError> {
     let code_generator = CodeGenerator::new();
     code_generator.generate_bytecode(ast, code, code_file_name)
 }
@@ -204,8 +205,13 @@ impl CodeGenerator {
         }
     }
 
-    pub fn generate_bytecode(mut self, ast: &Ast, code: &str, code_file_name: &str) -> Bytecode {
-        self.generate(ast);
+    pub fn generate_bytecode(
+        mut self,
+        ast: &Ast,
+        code: &str,
+        code_file_name: &str,
+    ) -> Result<Bytecode, CodegenError> {
+        self.generate(ast)?;
 
         // make sure `this` is in variable names, this makes things easier in the VM
         let _ = self.variable_names.lookup_or_insert("this");
@@ -272,28 +278,28 @@ impl CodeGenerator {
             }
         }
 
-        Bytecode {
+        Ok(Bytecode {
             instructions,
             variable_names: self.variable_names.into(),
             functions_start_idx: script_len,
             stack_save_slots: self.stack_save_slots,
             code: code.to_string(),
             code_file_name: code_file_name.to_string(),
-        }
+        })
     }
 
-    pub fn generate(&mut self, ast: &Ast) {
+    pub fn generate(&mut self, ast: &Ast) -> Result<(), CodegenError> {
         let prev_span = self.current_span;
         self.current_span = ast.span;
 
         match &ast.kind {
             AstKind::Block(l) => {
                 for line in l {
-                    self.generate(line);
+                    self.generate(line)?;
                 }
             }
             AstKind::Brackets(ast) => {
-                self.generate(ast);
+                self.generate(ast)?;
             }
             op @ (AstKind::Add(lhs, rhs)
             | AstKind::Subtract(lhs, rhs)
@@ -307,8 +313,8 @@ impl CodeGenerator {
             | AstKind::GreaterThan(lhs, rhs)
             | AstKind::LessThanOrEqual(lhs, rhs)
             | AstKind::GreaterThanOrEqual(lhs, rhs)) => {
-                self.generate(lhs);
-                self.generate(rhs);
+                self.generate(lhs)?;
+                self.generate(rhs)?;
 
                 let binary_op = match op {
                     AstKind::Add(_, _) => BinaryOp::Add,
@@ -328,13 +334,13 @@ impl CodeGenerator {
                 self.push_instruction(InstructionKind::BinaryOp(binary_op));
             }
             op @ (AstKind::And(lhs, rhs) | AstKind::Or(lhs, rhs)) => {
-                self.generate(lhs);
+                self.generate(lhs)?;
                 // Make sure that lhs always is always coerced to a bool, so short-circuiting
                 // doesn't break language semantics
                 self.push_instruction(InstructionKind::CastBool);
                 self.push_instruction(PLACEHOLDER_INSTRUCTION_KIND);
                 let short_circuit_jump_instruction = self.current_instructions().len() - 1;
-                self.generate(rhs);
+                self.generate(rhs)?;
                 let binary_op = match op {
                     AstKind::And(_, _) => BinaryOp::And,
                     AstKind::Or(_, _) => BinaryOp::Or,
@@ -353,11 +359,11 @@ impl CodeGenerator {
                     jump_instruction_kind;
             }
             AstKind::UnaryMinus(ast) => {
-                self.generate(ast);
+                self.generate(ast)?;
                 self.push_instruction(InstructionKind::UnaryOp(UnaryOp::Negate));
             }
             AstKind::BooleanNegate(ast) => {
-                self.generate(ast);
+                self.generate(ast)?;
                 self.push_instruction(InstructionKind::UnaryOp(UnaryOp::Not));
             }
             AstKind::Null => self.push_instruction(InstructionKind::PushNull),
@@ -373,7 +379,7 @@ impl CodeGenerator {
             AstKind::ListLiteral(elems) => {
                 let n_elems = elems.len();
                 for elem in elems {
-                    self.generate(elem);
+                    self.generate(elem)?;
                 }
                 self.push_instruction(InstructionKind::MakeList { n_elems });
             }
@@ -381,7 +387,7 @@ impl CodeGenerator {
                 let n_keys = kv_pairs.len();
                 for (key, value) in kv_pairs {
                     self.push_instruction(InstructionKind::PushString(key.clone()));
-                    self.generate(value);
+                    self.generate(value)?;
                 }
                 self.push_instruction(InstructionKind::MakeObject { n_keys });
             }
@@ -390,30 +396,30 @@ impl CodeGenerator {
                 self.push_instruction(InstructionKind::LoadVariable(idx));
             }
             AstKind::Assign(name, value) => {
-                self.generate(value);
+                self.generate(value)?;
                 let idx = self.variable_names.lookup_or_insert(name);
                 self.push_instruction(InstructionKind::StoreVariable(idx));
             }
             AstKind::Indexing { value, index } => {
-                self.generate(value);
-                self.generate(index);
+                self.generate(value)?;
+                self.generate(index)?;
                 self.push_instruction(InstructionKind::GetIndex);
             }
             AstKind::IndexingAssign { value, index, rhs } => {
-                self.generate(value);
-                self.generate(index);
-                self.generate(rhs);
+                self.generate(value)?;
+                self.generate(index)?;
+                self.generate(rhs)?;
                 self.push_instruction(InstructionKind::SetIndex);
             }
             AstKind::MemberAccess { value, member } => {
-                self.generate(value);
+                self.generate(value)?;
                 self.push_instruction(InstructionKind::PushString(member.clone()));
                 self.push_instruction(InstructionKind::GetMember);
             }
             AstKind::MemberAssign { value, member, rhs } => {
-                self.generate(value);
+                self.generate(value)?;
                 self.push_instruction(InstructionKind::PushString(member.clone()));
-                self.generate(rhs);
+                self.generate(rhs)?;
                 self.push_instruction(InstructionKind::SetMember);
             }
             AstKind::IfStatement {
@@ -421,10 +427,10 @@ impl CodeGenerator {
                 if_body,
                 else_body,
             } => {
-                self.generate(condition);
+                self.generate(condition)?;
                 self.push_instruction(PLACEHOLDER_INSTRUCTION_KIND);
                 let jump_to_else_instruction = self.current_instructions().len() - 1;
-                self.generate(if_body);
+                self.generate(if_body)?;
 
                 let else_start_idx;
                 match else_body {
@@ -434,7 +440,7 @@ impl CodeGenerator {
 
                         else_start_idx = self.current_instructions().len();
 
-                        self.generate(else_body);
+                        self.generate(else_body)?;
                         let after_else_idx = self.current_instructions().len();
                         self.current_instructions_mut()[jump_to_end_instruction].kind =
                             InstructionKind::Jump(after_else_idx);
@@ -448,9 +454,9 @@ impl CodeGenerator {
                     InstructionKind::JumpIfFalse(else_start_idx);
             }
             AstKind::FunctionCall { value, args } => {
-                self.generate(value);
+                self.generate(value)?;
                 for arg in args {
-                    self.generate(arg);
+                    self.generate(arg)?;
                 }
                 self.push_instruction(InstructionKind::FunctionCall {
                     arg_count: args.len(),
@@ -460,32 +466,33 @@ impl CodeGenerator {
                 name,
                 arg_names,
                 body,
-            } => self.generate_function_definition(Some(name), arg_names, body),
+            } => self.generate_function_definition(Some(name), arg_names, body)?,
             AstKind::UnnamedFunction { arg_names, body } => {
-                self.generate_function_definition(None, arg_names, body)
+                self.generate_function_definition(None, arg_names, body)?
             }
             AstKind::Return(value) => {
                 if let InstructionContext::Script = self.current_instruction_context {
-                    // TODO: Replace with Result
-                    panic!("return used outside of function");
+                    return Err(CodegenError::ReturnOutsideOfFunction {
+                        span: self.current_span,
+                    });
                 }
 
                 match value {
-                    Some(ast) => self.generate(ast),
+                    Some(ast) => self.generate(ast)?,
                     None => self.push_instruction(InstructionKind::PushNull),
                 }
                 self.push_instruction(InstructionKind::Return);
             }
             AstKind::WhileLoop { condition, body } => {
                 let condition_start_idx = self.current_instructions().len();
-                self.generate(condition);
+                self.generate(condition)?;
                 self.push_instruction(PLACEHOLDER_INSTRUCTION_KIND);
                 let jump_after_loop_instruction = self.current_instructions().len() - 1;
 
                 let body_start_idx = self.current_instructions().len();
                 self.with_loop_continue_idx(Some(condition_start_idx), |self_| {
                     self_.generate(body)
-                });
+                })?;
 
                 self.push_instruction(InstructionKind::Jump(condition_start_idx));
                 let after_loop_idx = self.current_instructions().len();
@@ -498,7 +505,7 @@ impl CodeGenerator {
                 iterable,
                 body,
             } => {
-                self.generate(iterable);
+                self.generate(iterable)?;
                 self.push_instruction(InstructionKind::MakeIterator);
                 let slot_idx = self.new_stack_save_slot();
                 self.push_instruction(InstructionKind::SaveStackSize { slot_idx });
@@ -510,7 +517,7 @@ impl CodeGenerator {
                 let variable_idx = self.variable_names.lookup_or_insert(variable);
                 self.push_instruction(InstructionKind::StoreVariable(variable_idx));
 
-                self.with_loop_continue_idx(Some(loop_start_idx), |self_| self_.generate(body));
+                self.with_loop_continue_idx(Some(loop_start_idx), |self_| self_.generate(body))?;
 
                 self.push_instruction(InstructionKind::Jump(loop_start_idx));
                 let after_loop_idx = self.current_instructions().len();
@@ -520,21 +527,27 @@ impl CodeGenerator {
             }
             AstKind::Continue => match self.current_loop_continue_idx {
                 Some(idx) => self.push_instruction(InstructionKind::Jump(idx)),
-                // TODO: Replace with Result
-                None => panic!("continue used outside of loop"),
-            },
-            AstKind::Break => {
-                match self.current_loop_continue_idx {
-                    Some(_) => self.push_instruction(InstructionKind::InternalPlaceholder(
-                        PlaceholderInstructionKind::Break,
-                    )),
-                    // TODO: Replace with Result
-                    None => panic!("break used outside of loop"),
+                None => {
+                    return Err(CodegenError::ContinueOutsideOfLoop {
+                        span: self.current_span,
+                    })
                 }
-            }
+            },
+            AstKind::Break => match self.current_loop_continue_idx {
+                Some(_) => self.push_instruction(InstructionKind::InternalPlaceholder(
+                    PlaceholderInstructionKind::Break,
+                )),
+                None => {
+                    return Err(CodegenError::BreakOutsideOfLoop {
+                        span: self.current_span,
+                    })
+                }
+            },
         };
 
         self.current_span = prev_span;
+
+        Ok(())
     }
 
     fn current_instructions(&self) -> &[Instruction] {
@@ -551,19 +564,24 @@ impl CodeGenerator {
         }
     }
 
-    fn generate_function_definition(&mut self, name: Option<&str>, params: &[String], body: &Ast) {
+    fn generate_function_definition(
+        &mut self,
+        name: Option<&str>,
+        params: &[String],
+        body: &Ast,
+    ) -> Result<(), CodegenError> {
         let mut param_set = BTreeSet::new();
         for param in params {
             if !param_set.insert(param) {
-                // TODO: Replace with Result, since a user could trigger this panic with bad input
-                panic!(
-                    "duplicate parameter name {} when generating function {:?}",
-                    param, name
-                );
+                return Err(CodegenError::DuplicateArgName {
+                    func_name: name.map(|s| s.to_owned()),
+                    arg_name: param.to_owned(),
+                    function_span: self.current_span,
+                });
             }
         }
 
-        let function_idx = self.generate_function_body(params, body);
+        let function_idx = self.generate_function_body(params, body)?;
 
         let placeholder_instruction =
             InstructionKind::InternalPlaceholder(PlaceholderInstructionKind::PushFunction {
@@ -578,9 +596,15 @@ impl CodeGenerator {
                 InstructionKind::StoreVariable(self.variable_names.lookup_or_insert(name));
             self.push_instruction(instruction);
         }
+
+        Ok(())
     }
 
-    fn generate_function_body(&mut self, params: &[String], body: &Ast) -> usize {
+    fn generate_function_body(
+        &mut self,
+        params: &[String],
+        body: &Ast,
+    ) -> Result<usize, CodegenError> {
         self.functions.push(Vec::new());
         let function_idx = self.functions.len() - 1;
 
@@ -597,10 +621,12 @@ impl CodeGenerator {
             self.push_instruction(instruction);
         }
 
-        self.with_loop_continue_idx(None, |self_| self_.generate(body));
+        self.with_loop_continue_idx(None, |self_| self_.generate(body))?;
 
         let AstKind::Block(lines) = &body.kind else {
-            panic!("tried generating function for AST that doesn't represent a block");
+            return Err(CodegenError::FunctionBodyNoBlock {
+                got_kind: body.kind.clone(),
+            });
         };
         let should_push_null = match lines.last() {
             // Empty function body returns null implicitly
@@ -616,7 +642,7 @@ impl CodeGenerator {
 
         self.current_instruction_context = prev_instruction_context;
 
-        function_idx
+        Ok(function_idx)
     }
 
     fn push_instruction(&mut self, instruction_kind: InstructionKind) {
@@ -633,12 +659,13 @@ impl CodeGenerator {
     fn with_loop_continue_idx(
         &mut self,
         loop_continue_idx: Option<usize>,
-        func: impl FnOnce(&mut CodeGenerator),
-    ) {
+        func: impl FnOnce(&mut CodeGenerator) -> Result<(), CodegenError>,
+    ) -> Result<(), CodegenError> {
         let prev_loop_continue_idx = self.current_loop_continue_idx;
         self.current_loop_continue_idx = loop_continue_idx;
-        func(self);
+        func(self)?;
         self.current_loop_continue_idx = prev_loop_continue_idx;
+        Ok(())
     }
 
     fn replace_break_instructions(
