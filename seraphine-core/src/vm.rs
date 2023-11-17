@@ -6,7 +6,8 @@ use std::{
 };
 
 use crate::{
-    bytecode::{BinaryOp, Bytecode, InstructionKind, UnaryOp, VariableLookupTable},
+    bytecode::{BinaryOp, Bytecode, InstructionKind, UnaryOp},
+    codegen::VariableLookupTable,
     common::Span,
     error::{FormattableWithContext, StdlibError, VmError},
     runtime::common::RuntimeContext,
@@ -520,7 +521,7 @@ mod tests {
     use super::*;
 
     use crate::{
-        bytecode,
+        codegen::generate,
         error::SeraphineError,
         macros::{
             assert_eq_bool, assert_eq_num, assert_eq_num_list, assert_eq_num_object, assert_eq_str,
@@ -533,7 +534,7 @@ mod tests {
     fn run_str(s: &str) -> Result<Value, SeraphineError> {
         let tokens = tokenize(s)?;
         let ast = parse(&tokens)?;
-        let instructions = bytecode::generate(&ast, s, "<test>")?;
+        let instructions = generate(&ast, s, "<test>")?;
         println!("{:#?}", instructions);
         let mut vm = Vm::new(instructions)?;
         vm.run()?;
@@ -1094,7 +1095,7 @@ mod tests {
 
         let tokens = tokenize(code).unwrap();
         let ast = parse(&tokens).unwrap();
-        let instructions = bytecode::generate(&ast, code, "<test>").unwrap();
+        let instructions = generate(&ast, code, "<test>").unwrap();
         let mut vm = Vm::new(instructions).unwrap();
         let err = vm.run().unwrap_err();
         let error_string = vm.format_error(err);

@@ -1,4 +1,5 @@
 pub mod bytecode;
+pub mod codegen;
 pub mod error;
 pub mod eval;
 pub mod io;

@@ -3,7 +3,7 @@ use std::process;
 use termion::color;
 
 use seraphine_core::{
-    bytecode::generate, error::SeraphineError, eval::Evaluator, parser::parse, tokenizer::tokenize,
+    codegen::generate, error::SeraphineError, eval::Evaluator, parser::parse, tokenizer::tokenize,
     vm::Vm,
 };
 
