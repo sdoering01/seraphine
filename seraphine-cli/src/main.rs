@@ -35,6 +35,10 @@ pub fn main() {
             eprintln!("{}", option_parser.help());
             process::exit(0);
         }
+        Ok(OptionParseAction::Version) => {
+            eprintln!("{}", option_parser.version());
+            process::exit(0);
+        }
         Ok(OptionParseAction::Eval {
             input_file,
             runtime,

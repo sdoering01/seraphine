@@ -9,6 +9,8 @@ Usage:
 Options:
     -h
     --help          Print this help text
+    -V
+    --version       Print the version of the Seraphine CLI
 
 Action:
     eval            Evaluate a Seraphine file directly
@@ -25,9 +27,12 @@ Action:
 
 const HELP_HINT_TEXT: &str = "For help try --help";
 
+const VERSION_TEXT: &str = concat!("Seraphine ", env!("CARGO_PKG_VERSION"));
+
 #[derive(Debug, Clone)]
 pub(crate) enum OptionParseAction {
     Help,
+    Version,
     Eval {
         input_file: String,
         runtime: Runtime,
@@ -101,6 +106,9 @@ where
             match arg.as_str() {
                 "-h" | "--help" => {
                     return Ok(OptionParseAction::Help);
+                }
+                "-V" | "--version" => {
+                    return Ok(OptionParseAction::Version);
                 }
                 _ if arg.starts_with('-') => {
                     return Err(OptionParseError::UnknownOption(arg));
@@ -235,5 +243,9 @@ where
 
     pub(crate) fn help_hint(&self) -> &'static str {
         HELP_HINT_TEXT
+    }
+
+    pub(crate) fn version(&self) -> &'static str {
+        VERSION_TEXT
     }
 }
