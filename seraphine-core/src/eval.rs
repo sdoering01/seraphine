@@ -97,7 +97,7 @@ impl Default for EvaluatorBuilder {
             stdin: Box::new(stdin()),
             stdout: Box::new(stdout()),
             stderr: Box::new(stderr()),
-            debug_writer: Some(Box::new(stdout())),
+            debug_writer: None,
             standard_variables: true,
             standard_functions: true,
         }
@@ -189,23 +189,15 @@ impl Evaluator {
         let tokens = tokenize(s)?;
 
         #[cfg(debug_assertions)]
-        if !cfg!(test) {
-            if let Some(debug_writer) = &mut self.ctx.debug_writer {
-                writeln!(debug_writer, "Tokens: {:?}", tokens)?;
-            }
-        } else {
-            println!("Tokens: {:?}", tokens);
+        if let Some(debug_writer) = &mut self.ctx.debug_writer {
+            writeln!(debug_writer, "Tokens: {:?}", tokens)?;
         }
 
         let ast = parse(&tokens)?;
 
         #[cfg(debug_assertions)]
-        if !cfg!(test) {
-            if let Some(debug_writer) = &mut self.ctx.debug_writer {
-                writeln!(debug_writer, "AST: {:#?}", ast)?;
-            }
-        } else {
-            println!("AST: {:#?}", ast);
+        if let Some(debug_writer) = &mut self.ctx.debug_writer {
+            writeln!(debug_writer, "AST: {:#?}", ast)?;
         }
 
         let result = evaluate(&ast, self)?;

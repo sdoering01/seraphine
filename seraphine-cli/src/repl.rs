@@ -20,6 +20,8 @@ use seraphine_core::{
     tokenizer::{Token, TokenKind},
 };
 
+use crate::common::{COLOR_DEBUG_INFO, COLOR_ERROR};
+
 static mut DEBUG_FILE: OnceCell<File> = OnceCell::new();
 
 macro_rules! debug {
@@ -154,7 +156,7 @@ pub(crate) struct Repl {
 impl Repl {
     pub(crate) fn new() -> std::io::Result<Repl> {
         let eval = Evaluator::builder()
-            .debug_writer(Some(ReplWriter::with_color(color::LightBlack.fg_str())))
+            .debug_writer(Some(ReplWriter::with_color(COLOR_DEBUG_INFO.fg_str())))
             .build();
 
         let stdout = WrappedStdout(std::io::stdout().into_raw_mode()?);
@@ -469,7 +471,7 @@ impl Repl {
 
     fn write_error(&mut self, e: impl Display) -> std::io::Result<()> {
         self.prepare_non_prompt_writing()?;
-        write!(self.stdout.0, "{}", color::Fg(color::Red))?;
+        write!(self.stdout.0, "{}", color::Fg(COLOR_ERROR))?;
         self.write_displayable(e)?;
         write!(self.stdout.0, "{}", color::Fg(color::Reset))
     }

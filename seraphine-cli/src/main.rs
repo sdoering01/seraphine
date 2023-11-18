@@ -3,6 +3,7 @@ use std::process;
 use crate::option_parser::{OptionParseAction, OptionParser};
 
 mod actions;
+mod common;
 mod error;
 mod option_parser;
 mod repl;
@@ -12,7 +13,7 @@ macro_rules! eprintln_red {
         std::eprintln!()
     };
     ($($arg:tt)*) => {{
-        std::eprint!("{}", termion::color::Fg(termion::color::Red));
+        std::eprint!("{}", termion::color::Fg($crate::common::COLOR_ERROR));
         std::eprint!($($arg)*);
         std::eprintln!("{}", termion::color::Fg(termion::color::Reset));
     }};

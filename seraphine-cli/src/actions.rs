@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{BufReader, Read, Write},
+    io::{stdout, BufReader, Read, Write},
     path::PathBuf,
 };
 
@@ -9,7 +9,36 @@ use seraphine_core::{
     tokenizer::tokenize, vm::Vm,
 };
 
-use crate::{error::CliError, option_parser::Runtime, repl::Repl};
+use crate::{common::COLOR_DEBUG_INFO, error::CliError, option_parser::Runtime, repl::Repl};
+
+struct ColoredWriter<W: Write> {
+    writer: W,
+    fg_color_string: String,
+}
+
+impl<W: Write> ColoredWriter<W> {
+    fn new(writer: W, fg_color_string: impl Into<String>) -> ColoredWriter<W> {
+        ColoredWriter {
+            writer,
+            fg_color_string: fg_color_string.into(),
+        }
+    }
+}
+
+impl<W: Write> Write for ColoredWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.writer.write_all(self.fg_color_string.as_bytes())?;
+        self.writer.write_all(buf)?;
+        self.writer
+            .write_all(termion::color::Reset.fg_str().as_bytes())?;
+        self.writer.flush()?;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.writer.flush()
+    }
+}
 
 fn load_code(input_file: &str) -> std::io::Result<String> {
     std::fs::read_to_string(input_file)
@@ -33,7 +62,10 @@ pub(crate) fn eval(input_file: &str, runtime: Runtime) -> Result<(), CliError> {
 
     let result = match runtime {
         Runtime::Evaluator => {
-            let mut eval = Evaluator::new();
+            let debug_writer = ColoredWriter::new(stdout(), COLOR_DEBUG_INFO.fg_str());
+            let mut eval = Evaluator::builder()
+                .debug_writer(Some(Box::new(debug_writer)))
+                .build();
             eval.eval_str(&code).map(|_| ())
         }
         Runtime::Vm => run_with_vm(&code, input_file),
