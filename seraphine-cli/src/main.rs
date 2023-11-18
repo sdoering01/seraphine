@@ -1,77 +1,53 @@
 use std::process;
 
-use termion::color;
+use crate::option_parser::{OptionParseAction, OptionParser};
 
-use seraphine_core::{
-    codegen::generate, error::SeraphineError, eval::Evaluator, parser::parse, tokenizer::tokenize,
-    vm::Vm,
-};
-
-use option_parser::{OptionParseAction, OptionParser, Runtime};
-
+mod actions;
+mod error;
 mod option_parser;
 mod repl;
 
-fn run_with_vm(code: &str, code_file_name: &str) -> Result<(), SeraphineError> {
-    let tokens = tokenize(code)?;
-    let ast = parse(&tokens)?;
-    let bytecode = generate(&ast, code, code_file_name)?;
-    let mut vm = Vm::new(bytecode)?;
-    vm.run().map_err(|e| e.into())
-}
-
-fn eval_code(code: &str, code_file_name: &str, runtime: Runtime) -> Result<(), SeraphineError> {
-    match runtime {
-        Runtime::Evaluator => {
-            let mut eval = Evaluator::new();
-            eval.eval_str(code).map(|_| ())
-        }
-        Runtime::Vm => run_with_vm(code, code_file_name),
-    }
+macro_rules! eprintln_red {
+    () => {
+        std::eprintln!()
+    };
+    ($($arg:tt)*) => {{
+        std::eprint!("{}", termion::color::Fg(termion::color::Red));
+        std::eprint!($($arg)*);
+        std::eprintln!("{}", termion::color::Fg(termion::color::Reset));
+    }};
 }
 
 pub fn main() {
     // Skip the first argument, which is the path to the CLI executable
     let args = std::env::args().skip(1);
 
-    let mut option_parser = OptionParser::new();
-    match option_parser.parse(args) {
+    let mut option_parser = OptionParser::new(args);
+    let (action, result) = match option_parser.parse() {
         Err(e) => {
-            eprintln!("{}", e);
+            eprintln_red!("seraphine: {}", e);
+            // TODO: Only print, when interactive
+            eprintln!("{}", option_parser.help_hint());
             process::exit(1);
         }
         Ok(OptionParseAction::Help) => {
-            println!("{}", option_parser.help());
+            eprintln!("{}", option_parser.help());
             process::exit(0);
         }
-        _ => {}
-    }
+        Ok(OptionParseAction::Eval {
+            input_file,
+            runtime,
+        }) => ("eval", actions::eval(&input_file, runtime)),
+        Ok(OptionParseAction::Compile {
+            input_file,
+            output_file,
+        }) => ("compile", actions::compile(&input_file, output_file)),
+        Ok(OptionParseAction::Run { input_file }) => ("eval", actions::run(&input_file)),
+        Ok(OptionParseAction::Repl) => ("repl", actions::repl()),
+    };
 
-    match option_parser.input_file() {
-        Some(input_file) => {
-            let code = match std::fs::read_to_string(input_file) {
-                Ok(code) => code,
-                Err(e) => {
-                    eprintln!("Can't open file {}: {}", input_file, e);
-                    process::exit(1);
-                }
-            };
-
-            if let Err(e) = eval_code(&code, input_file, option_parser.runtime()) {
-                eprintln!(
-                    "{}{}{}",
-                    color::Fg(color::Red),
-                    e.format(&code, input_file, true),
-                    color::Fg(color::Reset)
-                );
-                process::exit(1);
-            }
-        }
-        None => {
-            if let Err(e) = repl::repl(option_parser.runtime()) {
-                eprintln!("Encountered error in REPL: {}", e);
-                process::exit(1);
-            }
-        }
+    if let Err(e) = result {
+        eprintln_red!("seraphine {}: {}", action, e,);
+        process::exit(1);
     }
 }

@@ -20,8 +20,6 @@ use seraphine_core::{
     tokenizer::{Token, TokenKind},
 };
 
-use crate::option_parser::Runtime;
-
 static mut DEBUG_FILE: OnceCell<File> = OnceCell::new();
 
 macro_rules! debug {
@@ -138,7 +136,7 @@ impl History {
 // Prevent accidental direct writes to stdout
 struct WrappedStdout(RawTerminal<std::io::Stdout>);
 
-struct Repl {
+pub(crate) struct Repl {
     eval: Evaluator,
     stdout: WrappedStdout,
     input: String,
@@ -154,7 +152,7 @@ struct Repl {
 }
 
 impl Repl {
-    fn new() -> std::io::Result<Repl> {
+    pub(crate) fn new() -> std::io::Result<Repl> {
         let eval = Evaluator::builder()
             .debug_writer(Some(ReplWriter::with_color(color::LightBlack.fg_str())))
             .build();
@@ -419,7 +417,7 @@ impl Repl {
         Ok(())
     }
 
-    fn start(mut self) -> std::io::Result<()> {
+    pub(crate) fn start(mut self) -> std::io::Result<()> {
         debug!("Starting repl\n");
 
         let stdin = std::io::stdin();
@@ -498,14 +496,4 @@ impl Repl {
 
 fn write_newline(mut stdout: impl Write) -> std::io::Result<()> {
     write!(stdout, "\n{}", termion::cursor::Left(65535))
-}
-
-pub(crate) fn repl(runtime: Runtime) -> std::io::Result<()> {
-    match runtime {
-        Runtime::Evaluator => Repl::new()?.start(),
-        Runtime::Vm => {
-            eprintln!("The VM runtime does not support the REPL");
-            std::process::exit(1);
-        }
-    }
 }
