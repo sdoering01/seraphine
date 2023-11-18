@@ -24,8 +24,6 @@ pub trait FormattableWithContext: Display {
 }
 
 #[derive(Debug)]
-// Clippy warns that the Error suffix should be removed, but it makes sense here
-#[allow(clippy::enum_variant_names)]
 pub enum SeraphineError {
     TokenizeError(TokenizeError),
     ParseError(ParseError),

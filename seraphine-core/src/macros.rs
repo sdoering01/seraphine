@@ -1,6 +1,3 @@
-#![allow(unused_macros)]
-#![allow(unused_imports)]
-
 #[macro_export]
 macro_rules! assert_null {
     ( $value:expr ) => {
@@ -107,9 +104,7 @@ macro_rules! assert_eq_num_object {
             let $crate::value::Value::Object(obj) = $obj else {
                 ::std::panic!("value is not an object");
             };
-            #[allow(unused_variables)]
             let obj = obj.borrow();
-            #[allow(unused_mut)]
             let mut keys = 0;
             $(
                 match obj.get($key) {
