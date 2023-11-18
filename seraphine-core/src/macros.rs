@@ -1,6 +1,7 @@
 #![allow(unused_macros)]
 #![allow(unused_imports)]
 
+#[macro_export]
 macro_rules! assert_null {
     ( $value:expr ) => {
         match $value {
@@ -11,8 +12,9 @@ macro_rules! assert_null {
         }
     };
 }
-pub(crate) use assert_null;
+pub use assert_null;
 
+#[macro_export]
 macro_rules! assert_eq_num {
     ( $left:expr, $right:expr ) => {
         match ($left, $right) {
@@ -35,8 +37,9 @@ macro_rules! assert_eq_num {
         }
     };
 }
-pub(crate) use assert_eq_num;
+pub use assert_eq_num;
 
+#[macro_export]
 macro_rules! assert_eq_bool {
     ( $left:expr, $right:expr ) => {
         match ($left, $right) {
@@ -49,8 +52,9 @@ macro_rules! assert_eq_bool {
         }
     };
 }
-pub(crate) use assert_eq_bool;
+pub use assert_eq_bool;
 
+#[macro_export]
 macro_rules! assert_eq_str {
     ( $left:expr, $right:expr ) => {
         match ($left, $right) {
@@ -63,8 +67,9 @@ macro_rules! assert_eq_str {
         }
     };
 }
-pub(crate) use assert_eq_str;
+pub use assert_eq_str;
 
+#[macro_export]
 macro_rules! assert_eq_num_list {
     ( $left:expr, $right:expr ) => {
         match ($left, $right) {
@@ -84,7 +89,7 @@ macro_rules! assert_eq_num_list {
         }
     };
 }
-pub(crate) use assert_eq_num_list;
+pub use assert_eq_num_list;
 
 /// Asserts that the given object has the given keys and values.
 ///
@@ -95,6 +100,7 @@ pub(crate) use assert_eq_num_list;
 /// ```ignore
 /// assert_eq_num_object!(eval_str("{ a: 1, b: 2 }"), { "a" => 1.0, "b" => 2.0 });
 /// ```
+#[macro_export]
 macro_rules! assert_eq_num_object {
     ( $obj:expr, { $( $key:expr => $val:expr ),* } ) => {
         {
@@ -123,4 +129,4 @@ macro_rules! assert_eq_num_object {
         }
     };
 }
-pub(crate) use assert_eq_num_object;
+pub use assert_eq_num_object;

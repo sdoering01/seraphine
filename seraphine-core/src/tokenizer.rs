@@ -321,3 +321,32 @@ impl<'a> Tokenizer<'a> {
         Ok(tokens)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_number_tokenization() {
+        assert!(tokenize(".1").is_ok());
+        assert!(tokenize("1.1").is_ok());
+        assert!(tokenize("1.").is_ok());
+        assert!(tokenize("1e9").is_ok());
+        assert!(tokenize(".1e9").is_ok());
+        assert!(tokenize("1e-9").is_ok());
+        assert!(tokenize("42e0").is_ok());
+        assert!(tokenize("8.e2").is_ok());
+
+        assert!(tokenize("2.3.4").is_err());
+        assert!(tokenize("1..").is_err());
+        assert!(tokenize(".1.").is_err());
+        assert!(tokenize("1e9e4").is_err());
+        assert!(tokenize("1e42.1").is_err());
+
+        // These are not errors, since they are valid tokens -- they just should't be numbers
+        assert!(tokenize("..").unwrap().len() > 1);
+        assert!(tokenize("..1").unwrap().len() > 1);
+        assert!(tokenize(".e9").unwrap().len() > 1);
+        assert!(tokenize(".e").unwrap().len() > 1);
+    }
+}
