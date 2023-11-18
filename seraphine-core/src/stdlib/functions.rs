@@ -6,15 +6,6 @@ use crate::{
     value::{print_values, SeraphineIterator, Type, Value, NULL_VALUE},
 };
 
-pub(super) fn _set_internal_side_effect_flag(
-    ctx: &mut RuntimeContext,
-    _this: Option<Value>,
-    _args: Vec<Value>,
-) -> Result<Value, StdlibError> {
-    ctx._internal_side_effect_flag = true;
-    Ok(NULL_VALUE)
-}
-
 pub(super) fn print(
     ctx: &mut RuntimeContext,
     _this: Option<Value>,

@@ -37,11 +37,6 @@ pub(crate) fn get_standard_functions() -> Vec<(&'static str, Value)> {
     }
 
     vec![
-        make_value_tuple(
-            "_set_internal_side_effect_flag",
-            Some(0),
-            functions::_set_internal_side_effect_flag,
-        ),
         make_value_tuple("print", None, functions::print),
         make_value_tuple("println", None, functions::println),
         make_value_tuple("eprint", None, functions::eprint),

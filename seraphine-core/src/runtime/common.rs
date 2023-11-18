@@ -6,10 +6,6 @@ pub struct RuntimeContext {
     pub(crate) stderr: Box<dyn Write>,
     #[allow(dead_code)]
     pub(crate) debug_writer: Option<Box<dyn Write>>,
-    /// This flag is used during tests until observable side effects apart from writing to stdout
-    /// are introduced.
-    // TODO: Remove this when some form of obvservable side effects is implemented
-    pub(crate) _internal_side_effect_flag: bool,
 }
 
 impl RuntimeContext {
@@ -24,7 +20,6 @@ impl RuntimeContext {
             stdout,
             stderr,
             debug_writer,
-            _internal_side_effect_flag: false,
         }
     }
 }
