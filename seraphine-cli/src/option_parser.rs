@@ -14,8 +14,8 @@ Options:
 
 Action:
     eval            Evaluate a Seraphine file directly
-      --evaluator       Run the file with the evaluator [default]
-      --vm              Run the file with the VM without producing a bytecode file
+      --evaluator       Evaluate the file with the evaluator [default]
+      --vm              Evaluate the file with the VM without producing a bytecode file
 
     compile         Compile a Seraphine file to bytecode
       -o <file>
