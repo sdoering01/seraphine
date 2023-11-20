@@ -1,8 +1,8 @@
-use crate::common::Span;
+use crate::{common::Span, error::SerializeError};
 
 use super::{BinaryOp, Bytecode, Instruction, InstructionKind, UnaryOp};
 
-pub(super) fn serialize(bytecode: Bytecode) -> Vec<u8> {
+pub(super) fn serialize(bytecode: Bytecode) -> Result<Vec<u8>, SerializeError> {
     let mut buf = Vec::new();
 
     serialize_usize(&mut buf, bytecode.variable_names.len());
@@ -16,14 +16,14 @@ pub(super) fn serialize(bytecode: Bytecode) -> Vec<u8> {
 
     serialize_usize(&mut buf, bytecode.instructions.len());
     for instruction in bytecode.instructions {
-        serialize_instruction(&mut buf, instruction);
+        serialize_instruction(&mut buf, instruction)?;
     }
 
     serialize_string(&mut buf, bytecode.code_file_name);
 
     serialize_string(&mut buf, bytecode.code);
 
-    buf
+    Ok(buf)
 }
 
 fn serialize_string(buf: &mut Vec<u8>, string: String) {
@@ -48,7 +48,10 @@ fn push_bytes(buf: &mut Vec<u8>, bytes: impl IntoIterator<Item = u8>) {
     }
 }
 
-fn serialize_instruction(buf: &mut Vec<u8>, instruction: Instruction) {
+fn serialize_instruction(
+    buf: &mut Vec<u8>,
+    instruction: Instruction,
+) -> Result<(), SerializeError> {
     serialize_span(buf, instruction.span);
     buf.push(instruction_opcode(&instruction));
     match instruction.kind {
@@ -90,11 +93,13 @@ fn serialize_instruction(buf: &mut Vec<u8>, instruction: Instruction) {
         InstructionKind::AdvanceIteratorJumpIfDrained(addr) => serialize_usize(buf, addr),
         InstructionKind::SaveStackSize { slot_idx } => serialize_usize(buf, slot_idx),
         InstructionKind::TrimStackSize { slot_idx } => serialize_usize(buf, slot_idx),
-        InstructionKind::InternalPlaceholder(_) => {
-            panic!("trying to serialize internal placeholder")
+        InstructionKind::InternalPlaceholder(kind) => {
+            return Err(SerializeError::InternalPlaceholder(kind));
         }
         InstructionKind::End => {}
-    }
+    };
+
+    Ok(())
 }
 
 fn serialize_unary_op(buf: &mut Vec<u8>, op: UnaryOp) {

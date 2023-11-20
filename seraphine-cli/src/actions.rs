@@ -78,7 +78,7 @@ pub(crate) fn compile(input_file: &str, output_file: Option<String>) -> Result<(
     let code = load_code(input_file)?;
     let bytecode =
         generate_bytecode(&code, input_file).map_err(|e| e.format(&code, input_file, true))?;
-    let serialized_bytecode = bytecode.serialize();
+    let serialized_bytecode = bytecode.serialize().map_err(|e| e.to_string())?;
 
     let output_file = output_file
         .map(PathBuf::from)
@@ -94,7 +94,7 @@ pub(crate) fn run(input_file: &str) -> Result<(), CliError> {
     let mut bytecode_file = BufReader::new(bytecode_file);
     let mut serialized_bytecode = Vec::new();
     bytecode_file.read_to_end(&mut serialized_bytecode)?;
-    let bytecode = Bytecode::deserialize(serialized_bytecode);
+    let bytecode = Bytecode::deserialize(serialized_bytecode).map_err(|e| e.to_string())?;
     let mut vm = Vm::new(bytecode).map_err(|e| e.to_string())?;
     vm.run().map_err(|e| vm.format_error(e))?;
     Ok(())

@@ -1,7 +1,10 @@
 mod deserialize;
 mod serialize;
 
-use crate::common::Span;
+use crate::{
+    common::Span,
+    error::{DeserializeError, SerializeError},
+};
 
 #[derive(Debug, Clone)]
 pub enum UnaryOp {
@@ -116,12 +119,11 @@ impl Bytecode {
         Default::default()
     }
 
-    pub fn serialize(self) -> Vec<u8> {
+    pub fn serialize(self) -> Result<Vec<u8>, SerializeError> {
         serialize::serialize(self)
     }
 
-    // TODO: Return Result
-    pub fn deserialize(serialized_bytecode: Vec<u8>) -> Self {
+    pub fn deserialize(serialized_bytecode: Vec<u8>) -> Result<Self, DeserializeError> {
         deserialize::deserialize(serialized_bytecode)
     }
 }
@@ -176,8 +178,8 @@ mod tests {
         let ast = parse(&tokens).unwrap();
         let bytecode = generate(&ast, code, "<test>").unwrap();
         let bytecode_repr_before = format!("{:?}", bytecode);
-        let serialized_bytecode = bytecode.serialize();
-        let deserialized_bytecode = Bytecode::deserialize(serialized_bytecode);
+        let serialized_bytecode = bytecode.serialize().unwrap();
+        let deserialized_bytecode = Bytecode::deserialize(serialized_bytecode).unwrap();
         let bytecode_repr_after = format!("{:?}", deserialized_bytecode);
         assert_eq!(
             bytecode_repr_before, bytecode_repr_after,

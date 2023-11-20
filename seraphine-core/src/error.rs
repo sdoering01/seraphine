@@ -30,6 +30,8 @@ pub enum SeraphineError {
     EvalError(EvalError),
     CodegenError(CodegenError),
     VmError(VmError),
+    SerializeError(SerializeError),
+    DeserializeError(DeserializeError),
     IoError(io::Error),
 }
 
@@ -42,6 +44,8 @@ impl Display for SeraphineError {
             EvalError(e) => write!(f, "Eval error: {}", e),
             VmError(e) => write!(f, "VM error: {}", e),
             CodegenError(e) => write!(f, "Codegen error: {}", e),
+            SerializeError(e) => write!(f, "Serialize error: {}", e),
+            DeserializeError(e) => write!(f, "Deserialize error: {}", e),
             IoError(e) => write!(f, "IO error: {}", e),
         }
     }
@@ -55,6 +59,8 @@ impl SeraphineError {
             SeraphineError::EvalError(e) => e.format(input, file_name, with_traceback),
             SeraphineError::CodegenError(e) => e.format(input, file_name, with_traceback),
             SeraphineError::VmError(e) => e.format(input, file_name, with_traceback),
+            SeraphineError::SerializeError(e) => e.to_string(),
+            SeraphineError::DeserializeError(e) => e.to_string(),
             SeraphineError::IoError(e) => e.to_string(),
         }
     }
@@ -87,6 +93,18 @@ impl From<CodegenError> for SeraphineError {
 impl From<VmError> for SeraphineError {
     fn from(e: VmError) -> Self {
         Self::VmError(e)
+    }
+}
+
+impl From<SerializeError> for SeraphineError {
+    fn from(e: SerializeError) -> Self {
+        Self::SerializeError(e)
+    }
+}
+
+impl From<DeserializeError> for SeraphineError {
+    fn from(e: DeserializeError) -> Self {
+        Self::DeserializeError(e)
     }
 }
 
@@ -581,6 +599,62 @@ impl FormattableWithContext for VmError {
                 Some(error_ctx) => format_error(self.to_string(), error_ctx),
                 None => self.to_string(),
             },
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum SerializeError {
+    InternalPlaceholder(PlaceholderInstructionKind),
+}
+
+impl Display for SerializeError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SerializeError::InternalPlaceholder(kind) => write!(
+                f,
+                "Internal placeholder instruction {:?} found in bytecode",
+                kind
+            ),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum DeserializeError {
+    UnknownOpCode(u8),
+    UnknownUnaryOpCode(u8),
+    UnknownBinaryOpCode(u8),
+    TooManyVariables(usize),
+    TooManyInstructions(usize),
+    UnexpectedEndOfInput,
+    InvalidUtf8String(Vec<u8>),
+}
+
+impl Display for DeserializeError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            DeserializeError::UnknownOpCode(op_code) => {
+                write!(f, "Unknown op code 0x{:02x} in bytecode", op_code)
+            }
+            DeserializeError::UnknownUnaryOpCode(op_code) => {
+                write!(f, "Unknown unary op code 0x{:02x} in bytecode", op_code)
+            }
+            DeserializeError::UnknownBinaryOpCode(op_code) => {
+                write!(f, "Unknown binary op code 0x{:02x} in bytecode", op_code)
+            }
+            DeserializeError::TooManyVariables(n_variables) => {
+                write!(f, "Too many variables in bytecode ({})", n_variables)
+            }
+            DeserializeError::TooManyInstructions(n_instructions) => {
+                write!(f, "Too many instructions in bytecode ({})", n_instructions)
+            }
+            DeserializeError::UnexpectedEndOfInput => {
+                write!(f, "Unexpected end of bytecode")
+            }
+            DeserializeError::InvalidUtf8String(bytes) => {
+                write!(f, "Invalid UTF-8 string in bytecode: {:?}", bytes)
+            }
         }
     }
 }
