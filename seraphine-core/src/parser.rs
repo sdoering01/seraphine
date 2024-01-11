@@ -560,7 +560,7 @@ impl<'a> Parser<'a> {
         // { <key1>[: <val1> | <unnamed_function_definition_without_fn>], ... }
         let l_brace_span = self.expect(TokenKind::LBrace)?.span;
         let mut key_value_pairs = Vec::new();
-        while self.peek_kind() != Some(&TokenKind::RBrace) {
+        while let Some(TokenKind::Identifier(_)) = self.peek_next_non_newline_kind() {
             self.skip_newlines();
             let key = self.expect_identifier()?;
             self.skip_newlines();
