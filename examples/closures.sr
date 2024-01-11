@@ -1,7 +1,7 @@
-fn create_readonly_varialbe(var) {
+fn create_readonly_variable(var) {
     // This closure has read-only access to its parent's scope
     fn () { var }
 }
 
-answer_getter = create_readonly_varialbe(42)
+answer_getter = create_readonly_variable(42)
 println("The answer is:", answer_getter())
