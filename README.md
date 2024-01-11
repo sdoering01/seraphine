@@ -75,6 +75,7 @@ More examples can be found in the [examples directory](examples).
     - `function`
     - `list`
     - `object`
+    - `iterator`
 - Indexing and member access on values
 - `this` receiver for object methods
 - Reading from stdin and writing to stdout and stderr
