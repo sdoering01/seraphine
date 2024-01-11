@@ -63,7 +63,7 @@ More examples can be found in the [examples directory](examples).
 
 - Arithmetic and logic operations
 - If statements with `else if` and `else`
-- While loops
+- While and for loops
     - `break` and `continue`
 - Built-in and user-defined functions
     - Automatically return last expression from function
